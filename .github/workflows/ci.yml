@@ -42,6 +42,43 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+  contracts:
+    name: contracts · coverage · fuzz · slither
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Hard gate: >=90% on every metric globally, and >=90% statements/lines/functions
+      # per production contract, so one well-covered file cannot mask a poor one.
+      - name: Coverage gate
+        run: npm run coverage:check --workspace @trustchain/contracts
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1.9.1
+
+      - name: Fuzz and invariant suites
+        working-directory: packages/contracts
+        run: |
+          forge install foundry-rs/forge-std --no-git
+          FOUNDRY_PROFILE=ci forge test
+
+      # Hard gate: any HIGH or MEDIUM finding fails the build. Accepted findings are
+      # suppressed at the source with `slither-disable-next-line` plus a justification,
+      # never by disabling a detector globally — see docs/SLITHER.md.
+      - name: Slither
+        uses: crytic/slither-action@v0.4.2
+        with:
+          target: packages/contracts
+          fail-on: medium
+
   supply-chain:
     name: dependency & supply chain
     runs-on: ubuntu-latest

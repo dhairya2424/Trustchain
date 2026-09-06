@@ -36,6 +36,9 @@ const config: HardhatUserConfig = {
   gasReporter: {
     enabled: process.env.REPORT_GAS === "true",
     currency: "USD",
+    noColors: true,
+    excludeContracts: ["mocks/"],
+    outputFile: process.env.GAS_REPORT_FILE,
   },
   typechain: {
     outDir: "typechain-types",

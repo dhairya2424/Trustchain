@@ -214,6 +214,10 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
 
     function credentialOf(bytes32 credentialHash) external view returns (Credential memory) {
         Credential memory credential = _credentials[credentialHash];
+        // `issuedAt` is an existence sentinel here, not a timestamp comparison: it is
+        // either 0 (never issued) or a real block timestamp, which cannot itself be 0
+        // on any live chain. The detector targets timestamp arithmetic, not this.
+        // slither-disable-next-line incorrect-equality
         if (credential.issuedAt == 0) revert CredentialNotFound(credentialHash);
         return credential;
     }
@@ -255,6 +259,9 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
      */
     function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
         if (address(auditTrail) == address(0)) return;
+        // The entry id is informational. What matters is that a refused write reverts,
+        // which propagates from this call.
+        // slither-disable-next-line unused-return
         auditTrail.logAction(didHash, actionCode, refHash);
     }
 

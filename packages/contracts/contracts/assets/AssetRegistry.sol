@@ -157,9 +157,12 @@ contract AssetRegistry is
         // so every observable state must already be consistent.
         _ownerDID[tokenId] = toDID;
         if (soulbound) _soulbound[tokenId] = true;
-
-        _safeMint(owner, tokenId);
         _setTokenURI(tokenId, uri);
+
+        // Every observable field is written BEFORE _safeMint, because _safeMint hands
+        // control to the recipient's onERC721Received. A receiver that inspected the
+        // token mid-mint would otherwise see it with an empty tokenURI.
+        _safeMint(owner, tokenId);
 
         emit AssetMinted(tokenId, toDID, owner, uri, soulbound, msg.sender);
         _audit(toDID, ActionCodes.ASSET_MINTED, bytes32(tokenId));
@@ -284,6 +287,9 @@ contract AssetRegistry is
      */
     function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
         if (address(auditTrail) == address(0)) return;
+        // The entry id is informational. What matters is that a refused write reverts,
+        // which propagates from this call.
+        // slither-disable-next-line unused-return
         auditTrail.logAction(didHash, actionCode, refHash);
     }
 

@@ -118,22 +118,22 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
 
     /// @dev Starting matrix. An ADMIN may re-scope any of it later.
     function _seedDefaultPermissions() private {
-        _setPermission(ADMIN_ROLE, Permissions.MANAGE_ROLES, true);
-        _setPermission(ADMIN_ROLE, Permissions.REGISTER_DID, true);
-        _setPermission(ADMIN_ROLE, Permissions.VIEW_AUDIT, true);
-        _setPermission(ADMIN_ROLE, Permissions.MINT_ASSET, true);
-        _setPermission(ADMIN_ROLE, Permissions.ASSIGN_ASSET, true);
-        _setPermission(ADMIN_ROLE, Permissions.ISSUE_CREDENTIAL, true);
-        _setPermission(ADMIN_ROLE, Permissions.REVOKE_CREDENTIAL, true);
+        _writePermission(ADMIN_ROLE, Permissions.MANAGE_ROLES, true);
+        _writePermission(ADMIN_ROLE, Permissions.REGISTER_DID, true);
+        _writePermission(ADMIN_ROLE, Permissions.VIEW_AUDIT, true);
+        _writePermission(ADMIN_ROLE, Permissions.MINT_ASSET, true);
+        _writePermission(ADMIN_ROLE, Permissions.ASSIGN_ASSET, true);
+        _writePermission(ADMIN_ROLE, Permissions.ISSUE_CREDENTIAL, true);
+        _writePermission(ADMIN_ROLE, Permissions.REVOKE_CREDENTIAL, true);
 
-        _setPermission(MANAGER_ROLE, Permissions.MINT_ASSET, true);
-        _setPermission(MANAGER_ROLE, Permissions.ASSIGN_ASSET, true);
-        _setPermission(MANAGER_ROLE, Permissions.ISSUE_CREDENTIAL, true);
-        _setPermission(MANAGER_ROLE, Permissions.REVOKE_CREDENTIAL, true);
-        _setPermission(MANAGER_ROLE, Permissions.REGISTER_DID, true);
+        _writePermission(MANAGER_ROLE, Permissions.MINT_ASSET, true);
+        _writePermission(MANAGER_ROLE, Permissions.ASSIGN_ASSET, true);
+        _writePermission(MANAGER_ROLE, Permissions.ISSUE_CREDENTIAL, true);
+        _writePermission(MANAGER_ROLE, Permissions.REVOKE_CREDENTIAL, true);
+        _writePermission(MANAGER_ROLE, Permissions.REGISTER_DID, true);
 
         // AUDITOR is read-only by design: verification only, no write permission.
-        _setPermission(AUDITOR_ROLE, Permissions.VIEW_AUDIT, true);
+        _writePermission(AUDITOR_ROLE, Permissions.VIEW_AUDIT, true);
 
         // USER holds an identity and owns assets; it carries no platform permission.
     }
@@ -166,16 +166,32 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
     function _setPermission(bytes32 role, bytes32 permission, bool allowed) private {
         if (_rolePermissions[role][permission] == allowed) return; // idempotent, no event
 
+        _writePermission(role, permission, allowed);
+        _audit(bytes32(0), ActionCodes.PERMISSION_UPDATED, permission);
+    }
+
+    /**
+     * @dev State write only, with no external call.
+     *
+     * Kept separate so {_seedDefaultPermissions} can populate the initial matrix during
+     * {initialize} without routing through the audit path. There is no trail to write to
+     * at that point, and keeping the external call out of the constructor path entirely
+     * is clearer than relying on a runtime address check.
+     */
+    function _writePermission(bytes32 role, bytes32 permission, bool allowed) private {
         _rolePermissions[role][permission] = allowed;
 
+        // EnumerableSet returns whether the set changed. The caller has already
+        // established that this is a real change, so the flag carries no information.
         if (allowed) {
+            // slither-disable-next-line unused-return
             _rolePermissionSet[role].add(permission);
         } else {
+            // slither-disable-next-line unused-return
             _rolePermissionSet[role].remove(permission);
         }
 
         emit PermissionUpdated(role, permission, allowed, msg.sender);
-        _audit(bytes32(0), ActionCodes.PERMISSION_UPDATED, permission);
     }
 
     /// @notice True when any role held by `account` carries `permission`.
@@ -274,7 +290,11 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         granted = super._grantRole(role, account);
 
         if (granted) {
+            // `granted` already proves the membership change; the set's own return
+            // value is redundant.
+            // slither-disable-next-line unused-return
             _accountRoles[account].add(role);
+            // slither-disable-next-line unused-return
             _roleMembers[role].add(account);
             _audit(_didOf(account), ActionCodes.ROLE_GRANTED, role);
         }
@@ -284,7 +304,9 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         revoked = super._revokeRole(role, account);
 
         if (revoked) {
+            // slither-disable-next-line unused-return
             _accountRoles[account].remove(role);
+            // slither-disable-next-line unused-return
             _roleMembers[role].remove(account);
             _audit(_didOf(account), ActionCodes.ROLE_REVOKED, role);
         }
@@ -306,6 +328,9 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
      */
     function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
         if (address(auditTrail) == address(0)) return;
+        // The entry id is informational. What matters is that a refused write reverts,
+        // which propagates from this call.
+        // slither-disable-next-line unused-return
         auditTrail.logAction(didHash, actionCode, refHash);
     }
 

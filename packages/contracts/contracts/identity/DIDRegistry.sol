@@ -290,6 +290,9 @@ contract DIDRegistry is
      */
     function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
         if (address(auditTrail) == address(0)) return;
+        // The entry id is informational. What matters is that a refused write reverts,
+        // which propagates from this call.
+        // slither-disable-next-line unused-return
         auditTrail.logAction(didHash, actionCode, refHash);
     }
 
