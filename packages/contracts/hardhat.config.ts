@@ -11,7 +11,9 @@ const config: HardhatUserConfig = {
     version: "0.8.24",
     settings: {
       optimizer: { enabled: true, runs: 200 },
-      evmVersion: "paris",
+      // OpenZeppelin v5.6 emits the `mcopy` opcode, which is Cancun-only.
+      // Polygon Amoy and the local Hardhat network both support Cancun.
+      evmVersion: "cancun",
     },
   },
   networks: {

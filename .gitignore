@@ -10,7 +10,10 @@ coverage/
 artifacts/
 cache/
 cache_forge/
+forge-out/
+packages/contracts/lib/
 typechain-types/
+coverage.json
 packages/contracts/deployments/localhost.json
 
 # Secrets — every .env EXCEPT the examples
