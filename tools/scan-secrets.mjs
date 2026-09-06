@@ -137,12 +137,21 @@ export function scanContent(content, { filePath = "<memory>" } = {}) {
   return findings;
 }
 
-function trackedFiles() {
-  const result = spawnSync("git", ["ls-files"], { encoding: "utf8" });
+/**
+ * Tracked files PLUS untracked-but-not-ignored ones.
+ *
+ * Scanning only tracked files would skip a newly written file that has not been
+ * committed yet — precisely where a freshly pasted credential lives. Ignored
+ * paths (node_modules, .env, build output) stay excluded.
+ */
+function candidateFiles() {
+  const result = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], {
+    encoding: "utf8",
+  });
   if (result.status !== 0) {
     throw new Error(`git ls-files failed: ${result.stderr?.trim() ?? "unknown error"}`);
   }
-  return result.stdout.split(/\r?\n/).filter(Boolean);
+  return [...new Set(result.stdout.split(/\r?\n/).filter(Boolean))];
 }
 
 export function scanFiles(files) {
@@ -167,7 +176,7 @@ export function scanFiles(files) {
 
 function main() {
   const explicit = process.argv.slice(2);
-  const files = explicit.length > 0 ? explicit : trackedFiles();
+  const files = explicit.length > 0 ? explicit : candidateFiles();
   const findings = scanFiles(files);
 
   if (findings.length === 0) {

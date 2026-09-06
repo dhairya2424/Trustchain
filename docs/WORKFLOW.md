@@ -1,0 +1,116 @@
+# Process Workflow — TrustChain (SIH-26)
+
+End-to-end operational flow. One connected chart: entry, authentication, then a
+branch per role, with every path terminating in the immutable audit trail.
+
+```mermaid
+flowchart TD
+
+    START(["User opens the platform"]) --> CONN["Connect wallet"]
+    CONN --> NONCE["GET /auth/nonce<br/>single-use, 5 min TTL in Redis"]
+    NONCE --> SIGN["User signs SIWE message<br/>in wallet"]
+    SIGN --> VER["POST /auth/verify<br/>signature + Turnstile token"]
+
+    VER --> C1{"Signature valid?<br/>Nonce unused?<br/>Under rate limit?"}
+    C1 -->|"No"| REJ1["401 / 429<br/>attempt recorded"]
+    REJ1 --> END1(["Access denied"])
+
+    C1 -->|"Yes"| ROLE["Read role ON-CHAIN<br/>from RoleAccessControl"]
+    ROLE --> JWT["Issue RS256 JWT<br/>httpOnly, Secure, SameSite=Strict"]
+
+    JWT --> C2{"DID already<br/>registered?"}
+    C2 -->|"No"| REG["registerDID<br/>didHash, keyCommitment"]
+    REG --> AUDIT
+    C2 -->|"Yes"| ROUTE{"Which on-chain<br/>role is held?"}
+    REG --> ROUTE
+
+    ROUTE -->|"ADMIN"| ADM1["Admin Console"]
+    ROUTE -->|"MANAGER"| MGR1["Asset Management"]
+    ROUTE -->|"AUDITOR"| AUD1["Audit + Verification"]
+    ROUTE -->|"USER"| USR1["User Dashboard"]
+
+    ADM1 --> ADM2["Assign role to an identity<br/>grantRoleToDID"]
+    ADM1 --> ADM3["Update permission matrix<br/>setRolePermission"]
+    ADM1 --> ADM4["Revoke a role"]
+    ADM1 --> ADM5["Pause / unpause contracts"]
+    ADM2 --> GATE
+    ADM3 --> GATE
+    ADM4 --> GATE
+    ADM5 --> GATE
+
+    MGR1 --> MG2["Upload asset file"]
+    MG2 --> MG3{"MIME allowlist,<br/>magic bytes, size,<br/>malware scan pass?"}
+    MG3 -->|"No"| REJ2["Rejected at API boundary"]
+    REJ2 --> END2(["Upload refused"])
+    MG3 -->|"Yes"| MG4["Strip EXIF, random filename<br/>pin metadata to IPFS"]
+    MG4 --> MG5["mint to ownerDID + tokenURI<br/>via Defender relayer"]
+    MG5 --> GATE
+
+    MGR1 --> MG6["Allocate / transfer asset<br/>to another DID"]
+    MG6 --> MG7{"Soulbound token?"}
+    MG7 -->|"Yes"| REJ3["Transfer reverts"]
+    REJ3 --> END3(["Blocked on-chain"])
+    MG7 -->|"No"| MG8{"Recipient DID<br/>exists and active?"}
+    MG8 -->|"No"| REJ3
+    MG8 -->|"Yes"| MG9["Update tokenId to ownerDID<br/>emit AssetTransferred"]
+    MG9 --> GATE
+
+    MGR1 --> CR1["Issue credential<br/>store hash only, no PII"]
+    MGR1 --> CR2["Revoke credential<br/>with reason code"]
+    CR1 --> GATE
+    CR2 --> GATE
+
+    USR1 --> US2["View my DID, assets,<br/>credentials"]
+    USR1 --> US3["Transfer an owned asset"]
+    USR1 --> US4["Rotate controller key<br/>signed, nonce prevents replay"]
+    US4 --> US5["Reclaim assets to new key<br/>NFTs stay bound to the DID"]
+    US3 --> MG7
+    US5 --> GATE
+    US2 --> READ
+
+    AUD1 --> AU2["Query audit trail<br/>filter by actor, action, time"]
+    AUD1 --> AU3["Verify asset provenance"]
+    AUD1 --> AU4["Export compliance report CSV"]
+    AU2 --> READ
+    AU3 --> READ
+    AU4 --> GATE
+
+    GATE{"Does the caller's ON-CHAIN role<br/>carry this permission?"}
+    GATE -->|"No"| REVERT["Transaction REVERTS<br/>backend cannot override"]
+    REVERT --> AUDIT
+    GATE -->|"Yes"| EXEC["Smart contract executes<br/>state change"]
+    EXEC --> AUDIT
+
+    AUDIT["AuditTrail.logAction<br/>append-only, no update or delete"]
+    AUDIT --> EVENT["Event emitted on-chain"]
+    EVENT --> INDEX["The Graph subgraph indexes<br/>getLogs as fallback"]
+    INDEX --> READ
+
+    READ["Read surfaces:<br/>dashboards, verifier portal,<br/>CSV export"]
+    READ --> DONE(["Immutable, verifiable record"])
+
+    PUBV(["Anyone: /verify"]) --> PV1["Enter token ID or scan QR"]
+    PV1 --> PV2{"Token exists<br/>on-chain?"}
+    PV2 -->|"No"| PV3["UNREGISTERED"]
+    PV2 -->|"Yes"| PV4["Rebuild provenance:<br/>mint to transfers to current owner DID"]
+    PV4 --> PV5["AUTHENTIC + ownership chain"]
+    PV3 --> DONE
+    PV5 --> DONE
+```
+
+## What each terminal state means
+
+| Outcome               | Cause                                                          |
+| --------------------- | -------------------------------------------------------------- |
+| `Access denied`       | Bad signature, replayed nonce, rate limit, or failed bot check |
+| `Upload refused`      | File rejected at the API boundary before ever reaching IPFS    |
+| `Blocked on-chain`    | Soulbound token, or recipient has no active DID                |
+| `Transaction REVERTS` | Caller's on-chain role lacks the permission                    |
+| `Immutable record`    | Action executed and permanently logged                         |
+
+## Properties this workflow guarantees
+
+1. **Every write path passes through the same on-chain permission gate.** There is no branch in which the backend authorizes a state change by itself.
+2. **Failures are audited too** — a rejected attempt is recorded, not silently dropped.
+3. **Key loss is recoverable without losing assets**: rotating the controller and reclaiming keeps NFTs bound to the DID rather than to a lost key.
+4. **Verification requires no account** — the public path reaches the same on-chain truth as an auditor.

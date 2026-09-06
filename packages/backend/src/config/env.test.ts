@@ -89,7 +89,7 @@ describe("environment validation", () => {
   });
 
   it("never echoes a secret value into the error message", () => {
-    const secret = "super-secret-value-that-must-not-leak";
+    const secret = "super-secret-value-that-must-not-leak"; // secrets-scan:allow
 
     try {
       // Valid string, but fails the 32-byte rule — so it appears in an error path.
