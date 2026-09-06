@@ -24,10 +24,26 @@
     "test:tools": "vitest run",
     "diagrams": "npx -y @mermaid-js/mermaid-cli@11 -i docs/ARCHITECTURE.mmd -o docs/ARCHITECTURE.png -w 2400 -s 2 -b white && npx -y @mermaid-js/mermaid-cli@11 -i docs/WORKFLOW.mmd -o docs/WORKFLOW.png -w 2400 -s 2 -b white",
     "security:secrets": "node tools/scan-secrets.mjs",
+    "security:lockfile": "node tools/check-lockfile.mjs",
+    "security:audit": "node tools/run-audit.mjs",
+    "security:deps": "npm run security:lockfile && npm run security:audit",
     "security:bundle": "npm run build --workspace @trustchain/frontend && node tools/check-frontend-bundle.mjs",
-    "security:all": "npm run security:secrets && npm run security:bundle && npm run test:tools",
+    "security:all": "npm run security:secrets && npm run security:deps && npm run security:bundle && npm run test:tools",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\""
+  },
+  "comments": {
+    "overrides": "Patched transitive dependencies pulled in by the Hardhat 2 toolchain. npm's own fix for each of these is a major upgrade to Hardhat 3, which is a config-format rewrite we are not taking mid-build. Each pin below stays inside the dependant's expected major, so the toolchain API is unchanged. Revisit when migrating to Hardhat 3."
+  },
+  "overrides": {
+    "adm-zip": "^0.6.0",
+    "lodash": "^4.18.1",
+    "qs": "^6.16.0",
+    "serialize-javascript": "^7.1.1",
+    "tmp": "^0.2.7",
+    "undici": "^6.28.1",
+    "uuid": "^11.1.1",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

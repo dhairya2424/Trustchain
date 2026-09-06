@@ -42,6 +42,40 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+  supply-chain:
+    name: dependency & supply chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # npm ci fails outright if package-lock.json disagrees with any
+      # package.json, so this doubles as the lock/manifest sync check.
+      - name: Install from lockfile
+        run: npm ci
+
+      - name: Lockfile integrity
+        run: npm run security:lockfile
+
+      - name: Vulnerability gate
+        run: npm audit --audit-level=high
+
+      # Advisory, not blocking: osv-scanner exits non-zero on findings of ANY
+      # severity, and the remaining low/moderate findings all sit in the
+      # Hardhat 2 build toolchain with no production exposure. Making it a hard
+      # gate would leave CI permanently red for issues we have consciously
+      # accepted. Tighten to blocking after the Hardhat 3 migration.
+      - name: OSV scan (advisory)
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@v2.5.1
+        with:
+          scan-args: |-
+            --lockfile=package-lock.json
+
   secrets:
     name: secret hygiene
     runs-on: ubuntu-latest
