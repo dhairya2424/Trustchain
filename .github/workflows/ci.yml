@@ -130,6 +130,11 @@ jobs:
       - name: No committed credentials
         run: npm run security:secrets
 
+      # The sql`` tagged template parameterizes by construction; this catches anyone
+      # bypassing it with concatenation.
+      - name: No string-concatenated SQL
+        run: npm run security:sql
+
       - name: No .env committed
         run: |
           if git ls-files --error-unmatch '**/.env' >/dev/null 2>&1; then

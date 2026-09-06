@@ -24,11 +24,12 @@
     "test:tools": "vitest run",
     "diagrams": "npx -y @mermaid-js/mermaid-cli@11 -i docs/ARCHITECTURE.mmd -o docs/ARCHITECTURE.png -w 2400 -s 2 -b white && npx -y @mermaid-js/mermaid-cli@11 -i docs/WORKFLOW.mmd -o docs/WORKFLOW.png -w 2400 -s 2 -b white",
     "security:secrets": "node tools/scan-secrets.mjs",
+    "security:sql": "node tools/check-sql.mjs packages/backend/src",
     "security:lockfile": "node tools/check-lockfile.mjs",
     "security:audit": "node tools/run-audit.mjs",
     "security:deps": "npm run security:lockfile && npm run security:audit",
     "security:bundle": "npm run build --workspace @trustchain/frontend && node tools/check-frontend-bundle.mjs",
-    "security:all": "npm run security:secrets && npm run security:deps && npm run security:bundle && npm run test:tools",
+    "security:all": "npm run security:secrets && npm run security:sql && npm run security:deps && npm run security:bundle && npm run test:tools",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\""
   },
