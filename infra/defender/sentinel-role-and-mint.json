@@ -1,0 +1,70 @@
+{
+  "$comment": [
+    "OpenZeppelin Defender Monitor definition for TrustChain.",
+    "Addresses are placeholders: scripts/defender-register.ts substitutes the real ones",
+    "from packages/contracts/deployments/{network}.json, so this file never carries a",
+    "hardcoded deployment.",
+    "",
+    "Two monitors rather than one, because they need different urgency. Role and",
+    "permission changes are the shape a takeover has; minting is routine and only",
+    "interesting in aggregate or out of hours."
+  ],
+  "monitors": [
+    {
+      "name": "TrustChain — access control changes",
+      "type": "BLOCK",
+      "network": "matic-amoy",
+      "paused": false,
+      "riskCategory": "ACCESS-CONTROL",
+      "addresses": ["${RoleAccessControl}"],
+      "confirmLevel": 1,
+      "notifyConfig": {
+        "timeoutMs": 0,
+        "message": "Access control changed on TrustChain. Verify this was an approved Safe transaction."
+      },
+      "eventConditions": [
+        { "eventSignature": "RoleGranted(bytes32,address,address)" },
+        { "eventSignature": "RoleRevoked(bytes32,address,address)" },
+        { "eventSignature": "PermissionUpdated(bytes32,bytes32,bool,address)" },
+        { "eventSignature": "DefaultAdminTransferScheduled(address,uint48)" },
+        { "eventSignature": "AuditTrailUpdated(address,address)" }
+      ],
+      "functionConditions": [],
+      "txCondition": null
+    },
+    {
+      "name": "TrustChain — asset issuance",
+      "type": "BLOCK",
+      "network": "matic-amoy",
+      "paused": false,
+      "riskCategory": "TECHNICAL",
+      "addresses": ["${AssetRegistry}"],
+      "confirmLevel": 1,
+      "notifyConfig": {
+        "timeoutMs": 0,
+        "message": "An asset was minted on TrustChain."
+      },
+      "eventConditions": [
+        { "eventSignature": "AssetMinted(uint256,bytes32,address,string,bool,address)" }
+      ],
+      "functionConditions": [],
+      "txCondition": null
+    },
+    {
+      "name": "TrustChain — audit trail writer changes",
+      "type": "BLOCK",
+      "network": "matic-amoy",
+      "paused": false,
+      "riskCategory": "ACCESS-CONTROL",
+      "addresses": ["${AuditTrail}"],
+      "confirmLevel": 1,
+      "notifyConfig": {
+        "timeoutMs": 0,
+        "message": "The audit trail allowlist changed. Removing a writer creates a blind spot."
+      },
+      "eventConditions": [{ "eventSignature": "TrustedCallerUpdated(address,bool,address)" }],
+      "functionConditions": [],
+      "txCondition": null
+    }
+  ]
+}
