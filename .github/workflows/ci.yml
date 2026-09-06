@@ -41,3 +41,34 @@ jobs:
 
       - name: Unit tests
         run: npm run test
+
+  secrets:
+    name: secret hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: No committed credentials
+        run: npm run security:secrets
+
+      - name: No .env committed
+        run: |
+          if git ls-files --error-unmatch '**/.env' >/dev/null 2>&1; then
+            echo "A .env file is tracked by git."
+            exit 1
+          fi
+          echo "no tracked .env files"
+
+      - name: Frontend bundle carries no server keys
+        run: npm run security:bundle
+
+      - name: Security tooling tests
+        run: npm run test:tools
