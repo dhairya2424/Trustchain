@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import cookieParser from "cookie-parser";
 import { updateProfileRequest } from "@trustchain/shared";
 
+import { createAssetRouter, type AssetDependencies } from "./assets/routes";
 import { createAuthRouter, type AuthDependencies } from "./auth/routes";
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
 import { ConsoleLogger, type Logger } from "./http/logger";
@@ -10,6 +11,7 @@ import { requestId, validate } from "./http/middleware";
 export interface ServerOptions {
   auth?: AuthDependencies;
   profiles?: ProfileDependencies;
+  assets?: AssetDependencies;
   logger?: Logger;
 }
 
@@ -37,6 +39,10 @@ export function createServer(options: ServerOptions = {}): Express {
   if (options.profiles) {
     app.patch("/profiles/me", validate(updateProfileRequest, { logger }));
     app.use("/profiles", createProfileRouter(options.profiles));
+  }
+
+  if (options.assets) {
+    app.use("/assets", createAssetRouter(options.assets));
   }
 
   return app;
