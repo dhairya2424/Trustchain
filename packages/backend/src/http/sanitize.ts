@@ -243,7 +243,27 @@ export function sanitizeRichText(input: string): SanitizeResult {
 }
 
 /** Field names whose values are opaque tokens that must survive byte for byte. */
-const PASSTHROUGH_KEYS = new Set(["accesstoken", "refreshtoken", "signature", "proof", "sig"]);
+/**
+ * Fields carried through byte for byte.
+ *
+ * These are opaque cryptographic artifacts, and altering one by even a character destroys
+ * it: a JWT whose payload was touched no longer verifies, and a content key that lost a
+ * byte no longer decrypts. None of them can contain markup — they are base64, base64url
+ * or hex — so exempting them removes no protection, while a future tightening of
+ * `sanitizeText` that did touch them would silently corrupt credentials.
+ */
+const PASSTHROUGH_KEYS = new Set([
+  "accesstoken",
+  "refreshtoken",
+  "signature",
+  "proof",
+  "sig",
+  "jwt",
+  "credentialjwt",
+  "contentkey",
+  "cursor",
+  "nextcursor",
+]);
 
 export interface DeepSanitizeResult<T> {
   value: T;

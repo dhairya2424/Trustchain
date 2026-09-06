@@ -3,10 +3,12 @@ import cookieParser from "cookie-parser";
 import { updateProfileRequest } from "@trustchain/shared";
 
 import { createAssetRouter, type AssetDependencies } from "./assets/routes";
+import { createAuditRouter, type AuditDependencies } from "./audit/routes";
 import { createAuthRouter, type AuthDependencies } from "./auth/routes";
+import { createCredentialRouter, type CredentialDependencies } from "./credentials/routes";
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
 import { ConsoleLogger, type Logger } from "./http/logger";
-import { requestId, sanitizeInput, validate } from "./http/middleware";
+import { errorHandler, requestId, sanitizeInput, validate } from "./http/middleware";
 import { requireHttps, sanitizeResponses, securityHeaders } from "./http/securityHeaders";
 
 export interface SecurityOptions {
@@ -20,6 +22,8 @@ export interface ServerOptions {
   auth?: AuthDependencies;
   profiles?: ProfileDependencies;
   assets?: AssetDependencies;
+  audit?: AuditDependencies;
+  credentials?: CredentialDependencies;
   logger?: Logger;
   security?: SecurityOptions;
   /**
@@ -82,6 +86,19 @@ export function createServer(options: ServerOptions = {}): Express {
   if (options.assets) {
     app.use("/assets", createAssetRouter(options.assets));
   }
+
+  if (options.audit) {
+    app.use("/audit", createAuditRouter(options.audit));
+  }
+
+  if (options.credentials) {
+    app.use("/credentials", createCredentialRouter(options.credentials));
+  }
+
+  // Last, after every route. Handlers are wrapped in `asyncHandler`, which forwards a
+  // rejected promise here — without it Express 4 would leave the request hanging with no
+  // response at all, which turns a dependency outage into a pile of stuck connections.
+  app.use(errorHandler({ logger }));
 
   return app;
 }

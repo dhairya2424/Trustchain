@@ -4,13 +4,16 @@ import {
   bytes32,
   evmAddress,
   ipfsUri,
+  issueCredentialPayloadRequest,
   issueCredentialRequest,
   mintAssetRequest,
   nonZeroBytes32,
   pagination,
   profileMutableFields,
   revocationReason,
+  revokeCredentialRequest,
   updateProfileRequest,
+  verifyCredentialRequest,
 } from "../index";
 
 const ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
@@ -102,5 +105,110 @@ describe("request DTOs are strict", () => {
   it("rejects an inverted audit time range", () => {
     expect(auditQuery.safeParse({ from: 200, to: 100 }).success).toBe(false);
     expect(auditQuery.safeParse({ from: 100, to: 200 }).success).toBe(true);
+  });
+});
+
+describe("audit query", () => {
+  it("accepts an action name as well as a numeric code", () => {
+    expect(auditQuery.safeParse({ action: "CREDENTIAL_ISSUED" }).success).toBe(true);
+    expect(auditQuery.safeParse({ actionCode: 11 }).success).toBe(true);
+  });
+
+  it("rejects an action name that is not an identifier", () => {
+    expect(auditQuery.safeParse({ action: "<script>" }).success).toBe(false);
+  });
+
+  it("rejects an unknown filter, so a typo is not silently ignored", () => {
+    expect(auditQuery.safeParse({ acter: ADDRESS }).success).toBe(false);
+  });
+
+  it("caps the page size", () => {
+    expect(auditQuery.safeParse({ limit: 5000 }).success).toBe(false);
+  });
+});
+
+describe("credential issuance payload", () => {
+  const base = { didHash: HASH, credentialType: "EmploymentCredential", claims: { role: "Eng" } };
+
+  it("accepts flat scalar claims", () => {
+    expect(
+      issueCredentialPayloadRequest.safeParse({
+        ...base,
+        claims: { role: "Eng", level: 3, active: true },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("defaults an omitted expiry to never", () => {
+    expect(issueCredentialPayloadRequest.parse(base).expiresAt).toBe(0);
+  });
+
+  /** A credential is signed, pinned and effectively permanent, so the payload is bounded. */
+  it("rejects a nested claim object", () => {
+    expect(
+      issueCredentialPayloadRequest.safeParse({ ...base, claims: { nested: { a: 1 } } }).success,
+    ).toBe(false);
+  });
+
+  it("rejects more claims than the cap allows", () => {
+    const claims = Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`k${i}`, "v"]));
+
+    expect(issueCredentialPayloadRequest.safeParse({ ...base, claims }).success).toBe(false);
+  });
+
+  /** The subject is derived from the DID; letting a caller set it would redirect it. */
+  it("rejects a claim named id", () => {
+    expect(
+      issueCredentialPayloadRequest.safeParse({ ...base, claims: { id: "did:evil:1" } }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a credential type that is not an alphanumeric identifier", () => {
+    expect(
+      issueCredentialPayloadRequest.safeParse({ ...base, credentialType: "<script>x</script>" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("rejects an unknown field rather than ignoring it", () => {
+    expect(issueCredentialPayloadRequest.safeParse({ ...base, issuer: ADDRESS }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("credential verification request", () => {
+  it("accepts a hash alone", () => {
+    expect(verifyCredentialRequest.safeParse({ credentialHash: HASH }).success).toBe(true);
+  });
+
+  it("accepts a JWT alone", () => {
+    expect(verifyCredentialRequest.safeParse({ jwt: "a".repeat(40) }).success).toBe(true);
+  });
+
+  /** Supplying both is ambiguous: the two could disagree about which credential is meant. */
+  it("rejects both together", () => {
+    expect(
+      verifyCredentialRequest.safeParse({ credentialHash: HASH, jwt: "a".repeat(40) }).success,
+    ).toBe(false);
+  });
+
+  it("rejects neither", () => {
+    expect(verifyCredentialRequest.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("revocation", () => {
+  /** A boolean says something was revoked; a code says why. The contract requires one. */
+  it("refuses a zero reason code", () => {
+    expect(revokeCredentialRequest.safeParse({ credentialHash: HASH, reasonCode: 0 }).success).toBe(
+      false,
+    );
+  });
+
+  it("accepts a non-zero reason code", () => {
+    expect(revokeCredentialRequest.safeParse({ credentialHash: HASH, reasonCode: 1 }).success).toBe(
+      true,
+    );
   });
 });

@@ -25,6 +25,9 @@ function validEnv(overrides: Record<string, string | undefined> = {}): NodeJS.Pr
     PINATA_JWT: "pinata-jwt",
     PINATA_GATEWAY: "https://example.mypinata.cloud",
     TURNSTILE_SECRET_KEY: "turnstile-secret",
+    CREDENTIAL_PRIVATE_KEY: "credential-private-key-pem",
+    CREDENTIAL_PUBLIC_KEY: "credential-public-key-pem",
+    SUBGRAPH_URL: "http://localhost:8000/subgraphs/name/trustchain",
     ...overrides,
   } as NodeJS.ProcessEnv;
 }

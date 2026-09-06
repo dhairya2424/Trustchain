@@ -13,8 +13,26 @@ import { TokenService } from "./auth/tokens";
 import { CloudflareTurnstile } from "./auth/turnstile";
 import { RedisStore } from "./store/kv";
 import type { AuthDependencies } from "./auth/routes";
+import { createSessionResolver } from "./auth/session";
+import { CursorCodec } from "./audit/cursor";
+import { FallbackAuditSource, OnChainAuditSource, SubgraphAuditSource } from "./audit/events";
+import type { AuditDependencies } from "./audit/routes";
+import { PinataClient } from "./assets/pinata";
+import { CredentialIssuer } from "./credentials/vc";
+import { DefenderCredentialRelayer, OnChainCredentialReader } from "./credentials/registry";
+import type { CredentialDependencies } from "./credentials/routes";
+import type { CallerResolver } from "./http/authorize";
+import type { Logger } from "./http/logger";
 
-function buildAuth(env: Env): { auth: AuthDependencies; redis: Redis } {
+interface Platform {
+  auth: AuthDependencies;
+  redis: Redis;
+  publicClient: PublicClient;
+  roles: OnChainRoleReader;
+  tokens: TokenService;
+}
+
+function buildAuth(env: Env): Platform {
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
   const store = new RedisStore(redis);
 
@@ -22,24 +40,31 @@ function buildAuth(env: Env): { auth: AuthDependencies; redis: Redis } {
     transport: http(env.CHAIN_RPC_URL),
   }) as PublicClient;
 
+  const tokens = new TokenService(store, {
+    privateKeyPem: env.JWT_PRIVATE_KEY,
+    publicKeyPem: env.JWT_PUBLIC_KEY,
+    accessTtlSeconds: env.JWT_ACCESS_TTL_SECONDS,
+    refreshTtlSeconds: env.REFRESH_TTL_SECONDS,
+  });
+
+  const roles = new OnChainRoleReader(
+    {
+      roleAccessControl: env.ROLE_ACCESS_CONTROL_ADDRESS as Address,
+      didRegistry: env.DID_REGISTRY_ADDRESS as Address,
+    },
+    env.CHAIN_RPC_URL,
+    publicClient,
+  );
+
   return {
     redis,
+    publicClient,
+    roles,
+    tokens,
     auth: {
       nonces: new NonceService(store, env.SIWE_NONCE_TTL_SECONDS),
-      tokens: new TokenService(store, {
-        privateKeyPem: env.JWT_PRIVATE_KEY,
-        publicKeyPem: env.JWT_PUBLIC_KEY,
-        accessTtlSeconds: env.JWT_ACCESS_TTL_SECONDS,
-        refreshTtlSeconds: env.REFRESH_TTL_SECONDS,
-      }),
-      roles: new OnChainRoleReader(
-        {
-          roleAccessControl: env.ROLE_ACCESS_CONTROL_ADDRESS as Address,
-          didRegistry: env.DID_REGISTRY_ADDRESS as Address,
-        },
-        env.CHAIN_RPC_URL,
-        publicClient,
-      ),
+      tokens,
+      roles,
       siwe: new SiweVerifier({
         domain: env.SIWE_DOMAIN,
         // Contract wallets cannot be verified locally; viem's client-backed check
@@ -77,6 +102,85 @@ function buildAuth(env: Env): { auth: AuthDependencies; redis: Redis } {
   };
 }
 
+/**
+ * Audit reads: subgraph first, chain as the fallback.
+ *
+ * Both sources are always constructed. A deployment that only wired the subgraph would
+ * lose its audit log entirely during an indexer outage — precisely when someone is most
+ * likely to be looking at it.
+ */
+function buildAudit(
+  env: Env,
+  platform: Platform,
+  logger: Logger,
+  resolveCaller: CallerResolver,
+): AuditDependencies {
+  const events = new FallbackAuditSource(
+    new SubgraphAuditSource(env.SUBGRAPH_URL),
+    new OnChainAuditSource({
+      client: platform.publicClient,
+      address: env.AUDIT_TRAIL_ADDRESS as Address,
+      deploymentBlock: BigInt(env.AUDIT_TRAIL_DEPLOYMENT_BLOCK),
+    }),
+    (error) => {
+      logger.log({
+        level: "warn",
+        msg: "audit.subgraph_fallback",
+        detail: error instanceof Error ? error.message : "unknown",
+      });
+    },
+  );
+
+  return {
+    events,
+    cursors: new CursorCodec(env.FIELD_ENCRYPTION_KEY),
+    logger,
+    resolveCaller,
+    permissions: platform.roles,
+    maxExportRows: env.AUDIT_MAX_EXPORT_ROWS,
+  };
+}
+
+/**
+ * Credential issuance, verification and revocation.
+ *
+ * Returns undefined when no relayer is configured. Mounting the routes without one would
+ * give an endpoint that authenticates, authorises, signs a credential and then fails at
+ * the last step — having already handed the caller a JWT for a credential that was never
+ * anchored. Not mounting says so at boot instead.
+ */
+function buildCredentials(
+  env: Env,
+  platform: Platform,
+  logger: Logger,
+  resolveCaller: CallerResolver,
+): CredentialDependencies | undefined {
+  if (!env.DEFENDER_API_KEY || !env.DEFENDER_API_SECRET || !env.DEFENDER_RELAYER_URL) {
+    return undefined;
+  }
+
+  return {
+    issuer: new CredentialIssuer(
+      { privateKeyPem: env.CREDENTIAL_PRIVATE_KEY, publicKeyPem: env.CREDENTIAL_PUBLIC_KEY },
+      env.CREDENTIAL_ISSUER_ID,
+    ),
+    reader: new OnChainCredentialReader(
+      platform.publicClient,
+      env.CREDENTIAL_REGISTRY_ADDRESS as Address,
+    ),
+    relayer: new DefenderCredentialRelayer({
+      apiKey: env.DEFENDER_API_KEY,
+      apiSecret: env.DEFENDER_API_SECRET,
+      relayerUrl: env.DEFENDER_RELAYER_URL,
+      credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
+    }),
+    pinner: new PinataClient({ jwt: env.PINATA_JWT, gateway: env.PINATA_GATEWAY }),
+    logger,
+    resolveCaller,
+    permissions: platform.roles,
+  };
+}
+
 function main(): void {
   let env: Env;
 
@@ -92,14 +196,28 @@ function main(): void {
     throw error;
   }
 
-  const { auth, redis } = buildAuth(env);
+  const platform = buildAuth(env);
+  const { auth, redis } = platform;
 
   const pino = createPino({ level: env.LOG_LEVEL, environment: env.NODE_ENV });
   const logger = new PinoLogger(pino);
 
+  const resolveCaller = createSessionResolver({ tokens: platform.tokens, logger });
+  const credentials = buildCredentials(env, platform, logger, resolveCaller);
+
+  if (!credentials) {
+    logger.log({
+      level: "warn",
+      msg: "credentials.routes_not_mounted",
+      reason: "DEFENDER_API_KEY, DEFENDER_API_SECRET and DEFENDER_RELAYER_URL are required",
+    });
+  }
+
   const app = createServer({
     auth,
     logger,
+    audit: buildAudit(env, platform, logger, resolveCaller),
+    ...(credentials ? { credentials } : {}),
     httpLogger: httpLogger(pino),
     security: {
       // TLS is terminated by Nginx in production, so a plain-HTTP request there means the

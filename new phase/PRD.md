@@ -84,7 +84,22 @@ A blockchain-based platform that unifies **Decentralized Identity (DID)**, **Rol
 ### 6.1 Core (MVP — demo critical)
 - **F1 DID Registry:** register DIDs, resolve DID → wallet, key rotation.
 - **F2 Wallet Auth (SIWE):** Sign-In-With-Ethereum → JWT session; no passwords.
-- **F3 RBAC on-chain:** roles = `ADMIN`, `ISSUER`, `VERIFIER`, `USER`; grant/revoke; enforced both on-chain (contract modifiers) and off-chain (API middleware).
+- **F3 RBAC on-chain:** roles = `ADMIN`, `MANAGER`, `AUDITOR`, `USER`; grant/revoke; enforced both on-chain (contract modifiers) and off-chain (API middleware).
+
+  > **Corrected during P2.6.** This line previously read `ADMIN, ISSUER, VERIFIER, USER`, which
+  > contradicted the binding role set and the deployed `TrustChainRoles` library. There is no
+  > `ISSUER` or `VERIFIER` role on-chain, so an API gate naming either would be a check that
+  > can never pass. The mapping applied throughout is:
+  >
+  > | Planning name | Actual authority | Why |
+  > |---|---|---|
+  > | ISSUER | `MANAGER`, via `PERM_ISSUE_CREDENTIAL` | The permission ADMIN and MANAGER hold in the contract's default matrix. |
+  > | VERIFIER | *no role* | `POST /credentials/verify` is public by design — a credential only checkable by an account holder is not verifiable. `AUDITOR` instead holds `PERM_VIEW_AUDIT` for reading the audit trail. |
+  >
+  > Roles say *who someone is*; permissions say *what that role may do*, and an ADMIN can
+  > re-scope permissions at runtime. API gates therefore name the permission
+  > (`PERM_ISSUE_CREDENTIAL`, `PERM_VIEW_AUDIT`), not the role, so re-scoping on-chain takes
+  > effect without redeploying the API.
 - **F4 Asset NFT Registry (ERC-721):** admin/issuer-only mint; metadata on IPFS; NFT → DID binding; transfer tracked.
 - **F5 Audit Trail:** all critical ops emitted as events + indexed; admin dashboard with filters (actor, action, asset, time).
 - **F6 Admin Console UI:** mint asset, assign to DID, manage roles, view audit log.

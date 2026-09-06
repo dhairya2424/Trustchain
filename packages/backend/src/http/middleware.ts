@@ -83,6 +83,58 @@ export function validate<S extends ZodTypeAny>(
   };
 }
 
+/**
+ * Adapts an async handler for Express 4.
+ *
+ * Express 4 does not await a handler, so a rejected promise is never seen by the error
+ * pipeline: the request receives no response at all and hangs until the client times out,
+ * while the process logs an unhandled rejection. That is a worse failure than a 500 —
+ * a dependency outage becomes an accumulating pile of stuck connections rather than a
+ * clean error — so every async handler is wrapped and its rejection forwarded to `next`.
+ */
+export function asyncHandler(
+  handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>,
+): RequestHandler {
+  return (req, res, next) => {
+    handler(req, res, next).catch(next);
+  };
+}
+
+/**
+ * Terminal error handler.
+ *
+ * Returns the request id and nothing else. A stack trace or a driver message in a response
+ * body is a reconnaissance gift — it names the database, the ORM, sometimes a file path —
+ * so the detail goes to the log, where an operator can find it by request id, and the
+ * caller gets only the identifier they should quote.
+ */
+export function errorHandler(options: {
+  logger: Logger;
+}): (error: unknown, req: Request, res: Response, next: NextFunction) => void {
+  return (error, req, res, next) => {
+    options.logger.log({
+      level: "error",
+      msg: "request.unhandled_error",
+      requestId: req.requestId,
+      method: req.method,
+      path: req.path,
+      detail: error instanceof Error ? error.message : "unknown",
+      ...(process.env.NODE_ENV === "production"
+        ? {}
+        : { stack: error instanceof Error ? error.stack : undefined }),
+    });
+
+    // Headers already sent means a stream was mid-flight; Express must destroy the
+    // connection rather than try to write a second set of headers.
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+
+    res.status(500).json({ error: "internal_error", requestId: req.requestId });
+  };
+}
+
 /** Typed accessor so handlers do not re-cast `req.validated` everywhere. */
 export function validated<T>(req: Request): T {
   return req.validated as T;

@@ -61,6 +61,24 @@ export const envSchema = z.object({
   CREDENTIAL_REGISTRY_ADDRESS: evmAddress,
   AUDIT_TRAIL_ADDRESS: evmAddress,
 
+  /**
+   * Credential signing keys, separate from the session keys above.
+   *
+   * A session token is short-lived and only this API verifies it. A verifiable credential
+   * is long-lived and is verified by third parties, who need the public half. Sharing one
+   * keypair would hand every credential verifier the means to validate session tokens and
+   * would chain a multi-year rotation schedule to a seven-day one.
+   */
+  CREDENTIAL_PRIVATE_KEY: z.string().min(1),
+  CREDENTIAL_PUBLIC_KEY: z.string().min(1),
+  CREDENTIAL_ISSUER_ID: z.string().min(1).default("trustchain"),
+
+  /** Indexed audit events. The chain is the fallback when this is unavailable. */
+  SUBGRAPH_URL: z.string().url(),
+  /** Block AuditTrail was deployed in; the getLogs fallback never scans below it. */
+  AUDIT_TRAIL_DEPLOYMENT_BLOCK: z.coerce.number().int().nonnegative().default(0),
+  AUDIT_MAX_EXPORT_ROWS: z.coerce.number().int().positive().max(1_000_000).default(50_000),
+
   PINATA_JWT: z.string().min(1),
   PINATA_GATEWAY: z.string().url(),
 
@@ -68,6 +86,7 @@ export const envSchema = z.object({
 
   DEFENDER_API_KEY: z.string().optional(),
   DEFENDER_API_SECRET: z.string().optional(),
+  DEFENDER_RELAYER_URL: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
