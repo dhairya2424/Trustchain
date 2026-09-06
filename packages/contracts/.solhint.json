@@ -4,7 +4,7 @@
     "compiler-version": ["error", "0.8.24"],
     "func-visibility": ["error", { "ignoreConstructors": true }],
     "not-rely-on-time": "off",
-    "max-line-length": ["error", 120],
+    "max-line-length": ["error", 160],
     "import-path-check": "off",
     "gas-custom-errors": "off"
   }
