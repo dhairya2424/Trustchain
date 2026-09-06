@@ -7,7 +7,7 @@
     "build": "hardhat compile",
     "test": "hardhat test",
     "test:foundry": "forge test --fuzz-runs 1000",
-    "coverage": "hardhat coverage",
+    "coverage": "hardhat clean && hardhat coverage",
     "node": "hardhat node",
     "typecheck": "tsc --noEmit",
     "lint": "node tools/lint-solidity.mjs",
