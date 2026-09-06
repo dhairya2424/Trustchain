@@ -3,13 +3,20 @@ pragma solidity 0.8.24;
 
 // Foundry fuzz suite for DIDRegistry.
 //
-// Requires Foundry and forge-std, which are NOT part of the npm install:
-//   curl -L https://foundry.paradigm.xyz | bash && foundryup
-//   forge install foundry-rs/forge-std --no-git
-//   forge test --fuzz-runs 1000
+//   npm run test:foundry              1000 runs per property
+//   forge test --fuzz-runs 10000      the CI depth
 //
-// The same invariants are covered by randomised tests in test/DIDRegistry.test.ts,
-// which run under Hardhat with no extra toolchain.
+// Foundry is not an npm dependency. On Windows the `foundryup` shell installer
+// does not work; install the published win32 build instead and verify its
+// checksum against the .sha256 published beside it on the release:
+//   https://github.com/foundry-rs/foundry/releases
+// Then: forge install foundry-rs/forge-std --no-git
+//
+// Remappings in foundry.toml point at ../../node_modules because npm workspaces
+// hoist dependencies to the repo root, not into this package.
+//
+// The same invariants are also covered by randomised tests in
+// test/DIDRegistry.test.ts, which run under Hardhat with no extra toolchain.
 
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";

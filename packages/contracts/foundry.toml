@@ -3,15 +3,19 @@ src = "contracts"
 test = "test/foundry"
 out = "forge-out"
 cache_path = "cache_forge"
-libs = ["node_modules", "lib"]
+libs = ["lib"]
 solc_version = "0.8.24"
 evm_version = "cancun"
 optimizer = true
 optimizer_runs = 200
 
+# npm workspaces hoist node_modules to the repo root, so OpenZeppelin does not
+# live under packages/contracts. allow_paths lets solc read outside this project.
+allow_paths = ["../../node_modules"]
+
 remappings = [
-  "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
-  "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
+  "@openzeppelin/contracts/=../../node_modules/@openzeppelin/contracts/",
+  "@openzeppelin/contracts-upgradeable/=../../node_modules/@openzeppelin/contracts-upgradeable/",
   "forge-std/=lib/forge-std/src/",
 ]
 
