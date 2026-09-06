@@ -106,4 +106,33 @@ describe("frontend bundle contains no server secrets", () => {
     expect(result.findings).toEqual([]);
     expect(result.ok).toBe(true);
   });
+
+  /**
+   * The CSP shipped in infra/nginx uses `script-src 'self'` with no nonce and no
+   * 'unsafe-inline'. That is only correct while the build emits no inline script — if Vite
+   * ever starts inlining one, the app breaks under its own CSP in production and nowhere
+   * else. Asserting it here means the build catches it instead of the deployment.
+   */
+  it("emits no inline script, which is what lets the CSP omit a nonce", () => {
+    const html = readFileSync(path.join(distDir, "index.html"), "utf8");
+    const inline = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].filter(
+      (match) => match[1].trim().length > 0,
+    );
+
+    expect(inline).toEqual([]);
+  });
+
+  it("emits no inline event handler attribute", () => {
+    const offenders = [];
+
+    for (const file of distFiles()) {
+      if (path.extname(file) !== ".html") continue;
+      const html = readFileSync(file, "utf8");
+      if (/\son(?:click|load|error|mouseover)\s*=/i.test(html)) {
+        offenders.push(path.relative(repoRoot, file));
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
 });

@@ -3,6 +3,7 @@ import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { ZodTypeAny, z } from "zod";
 
 import type { Logger } from "./logger";
+import { sanitizeDeep } from "./sanitize";
 
 declare module "express-serve-static-core" {
   interface Request {
@@ -85,4 +86,42 @@ export function validate<S extends ZodTypeAny>(
 /** Typed accessor so handlers do not re-cast `req.validated` everywhere. */
 export function validated<T>(req: Request): T {
   return req.validated as T;
+}
+
+/**
+ * Sanitises the validated body in place, before a handler ever sees it.
+ *
+ * Runs after `validate`, not before. Sanitising first would let a payload that fails the
+ * schema still be quietly repaired into one that passes — a string of 300 characters of
+ * markup collapsing to 40 characters of text would slip past a length rule the author
+ * intended to enforce on what the user actually sent. Validating first means the schema
+ * judges the real input and the sanitiser only cleans what was already acceptable.
+ *
+ * This is the store-clean half. `sanitizeResponses` is the render-clean half, and both
+ * exist because neither is sufficient: this one cannot clean rows written by a migration
+ * or read from a chain event, and that one cannot stop dirty data being stored.
+ */
+export function sanitizeInput(options: { logger: Logger }): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (req.validated === undefined) return next();
+
+    const { value, findings } = sanitizeDeep(req.validated);
+    const fields = Object.keys(findings);
+
+    if (fields.length > 0) {
+      options.logger.log({
+        level: "warn",
+        msg: "security.input_sanitized",
+        requestId: req.requestId,
+        method: req.method,
+        path: req.path,
+        // Field paths and finding names only — never the value, which is the payload.
+        fields,
+        findings,
+      });
+    }
+
+    req.validated = value;
+    next();
+  };
 }

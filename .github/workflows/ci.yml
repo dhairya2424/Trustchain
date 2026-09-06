@@ -135,6 +135,11 @@ jobs:
       - name: No string-concatenated SQL
         run: npm run security:sql
 
+      # React escapes by default, so this catches the opt-outs: dangerouslySetInnerHTML,
+      # innerHTML assignment, eval and the rest. Zero, or justified with a written reason.
+      - name: No unjustified XSS sink
+        run: npm run security:xss
+
       - name: No .env committed
         run: |
           if git ls-files --error-unmatch '**/.env' >/dev/null 2>&1; then

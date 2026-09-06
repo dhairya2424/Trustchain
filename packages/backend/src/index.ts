@@ -4,6 +4,7 @@ import { createPublicClient, http, type Address, type PublicClient } from "viem"
 
 import { EnvValidationError, loadEnv, type Env } from "./config/env";
 import { createServer } from "./server";
+import { createPino, httpLogger, PinoLogger } from "./http/pinoLogger";
 import { FailureTracker } from "./auth/failureTracker";
 import { NonceService } from "./auth/nonce";
 import { OnChainRoleReader } from "./auth/roleReader";
@@ -92,9 +93,24 @@ function main(): void {
   }
 
   const { auth, redis } = buildAuth(env);
-  const server = createServer({ auth }).listen(env.PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(JSON.stringify({ level: "info", msg: "backend listening", port: env.PORT }));
+
+  const pino = createPino({ level: env.LOG_LEVEL, environment: env.NODE_ENV });
+  const logger = new PinoLogger(pino);
+
+  const app = createServer({
+    auth,
+    logger,
+    httpLogger: httpLogger(pino),
+    security: {
+      // TLS is terminated by Nginx in production, so a plain-HTTP request there means the
+      // app was reached around the intended ingress. Locally there is no TLS to require.
+      requireHttps: env.NODE_ENV === "production",
+      hsts: env.NODE_ENV === "production",
+    },
+  });
+
+  const server = app.listen(env.PORT, () => {
+    logger.log({ level: "info", msg: "backend.listening", port: env.PORT, env: env.NODE_ENV });
   });
 
   const shutdown = () => {

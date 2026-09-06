@@ -234,3 +234,75 @@ describe("PostgresProfileRepository issues parameterized SQL", () => {
     expect(queries[0]?.values).not.toContain("ADMIN");
   });
 });
+
+/**
+ * The store-clean half of P2.5's output safety, end to end through the wired server.
+ *
+ * These assert on what reaches the repository, not on what comes back in the response —
+ * the response is sanitised too, so asserting there would pass even if nothing had been
+ * cleaned on the way in.
+ */
+describe("PATCH /profiles/me — input sanitisation", () => {
+  let h: ReturnType<typeof harness>;
+  beforeEach(() => {
+    h = harness();
+  });
+
+  it("stores a display name with its markup removed", async () => {
+    await request(h.app)
+      .patch("/profiles/me")
+      .send({ displayName: "<script>alert(1)</script>Alice" });
+
+    const stored = await h.profiles.find(ALICE_DID);
+    expect(stored?.displayName).toBe("Alice");
+  });
+
+  it("stores a bio with an img onerror payload neutralised", async () => {
+    await request(h.app)
+      .patch("/profiles/me")
+      .send({ bio: '<img src=x onerror="steal(document.cookie)">auditor' });
+
+    const stored = await h.profiles.find(ALICE_DID);
+    expect(stored?.bio).toBe("auditor");
+    expect(stored?.bio).not.toContain("onerror");
+  });
+
+  it("removes a right-to-left override from a display name", async () => {
+    // Stored one way, rendered another. An audit trail cannot tolerate that.
+    await request(h.app)
+      .patch("/profiles/me")
+      .send({ displayName: `Alice${String.fromCodePoint(0x202e)}nimda` });
+
+    const stored = await h.profiles.find(ALICE_DID);
+    expect(stored?.displayName).toBe("Alicenimda");
+  });
+
+  it("logs the sanitisation with the field path but never the payload", async () => {
+    await request(h.app)
+      .patch("/profiles/me")
+      .send({ displayName: "<script>unique_marker_value</script>Alice" });
+
+    const record = h.logger.find("security.input_sanitized");
+    expect(record).toBeDefined();
+    expect(record?.fields).toEqual(["displayName"]);
+    expect(JSON.stringify(h.logger.records)).not.toContain("unique_marker_value");
+  });
+
+  it("leaves an ordinary update byte-identical and logs nothing", async () => {
+    await request(h.app).patch("/profiles/me").send({ displayName: "Alice Cooper" });
+
+    const stored = await h.profiles.find(ALICE_DID);
+    expect(stored?.displayName).toBe("Alice Cooper");
+    expect(h.logger.find("security.input_sanitized")).toBeUndefined();
+  });
+
+  it("validates before sanitising, so a rejected body is judged on what was really sent", async () => {
+    // Four hundred characters of markup would collapse to well under any length cap.
+    // Sanitising first would let it slip past the rule the schema author meant to enforce.
+    const res = await request(h.app)
+      .patch("/profiles/me")
+      .send({ displayName: `<b>${"x".repeat(400)}</b>` });
+
+    expect(res.status).toBe(400);
+  });
+});
