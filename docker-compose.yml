@@ -1,0 +1,54 @@
+name: trustchain
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trustchain-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-trustchain}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustchain_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-trustchain}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trustchain} -d ${POSTGRES_DB:-trustchain}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: trustchain-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  hardhat:
+    build:
+      context: .
+      dockerfile: infra/hardhat/Dockerfile
+    container_name: trustchain-hardhat
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: ["CMD", "node", "/app/infra/healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
+  redis-data:

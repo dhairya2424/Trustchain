@@ -1,0 +1,11 @@
+node_modules
+dist
+artifacts
+cache
+typechain-types
+coverage
+.turbo
+package-lock.json
+
+# Authored planning documents — kept verbatim, not reformatted.
+new phase/
