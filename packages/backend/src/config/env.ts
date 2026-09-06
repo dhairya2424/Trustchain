@@ -36,6 +36,19 @@ export const envSchema = z.object({
   SIWE_DOMAIN: z.string().min(1),
   SIWE_ORIGIN: z.string().url(),
   SIWE_NONCE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  REFRESH_TTL_SECONDS: z.coerce.number().int().positive().default(604_800), // 7 days
+
+  // Login hardening. Defaults are the numbers the build plan fixes.
+  AUTH_RATE_LIMIT_POINTS: z.coerce.number().int().positive().default(5),
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
+  AUTH_FAILURE_THRESHOLD: z.coerce.number().int().positive().default(10),
+  AUTH_BLOCK_BASE_SECONDS: z.coerce.number().int().positive().default(60),
+  AUTH_BLOCK_MAX_SECONDS: z.coerce.number().int().positive().default(86_400),
+
+  TURNSTILE_VERIFY_URL: z
+    .string()
+    .url()
+    .default("https://challenges.cloudflare.com/turnstile/v0/siteverify"),
 
   FIELD_ENCRYPTION_KEY: base64Key32,
 
