@@ -8,6 +8,9 @@ import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/crypt
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 
+import {IAuditTrail} from "../interfaces/IAuditTrail.sol";
+import {ActionCodes} from "../libraries/ActionCodes.sol";
+
 /**
  * @title DIDRegistry
  * @notice Registry of decentralized identifiers. Holds the cryptographic root of every
@@ -48,8 +51,10 @@ contract DIDRegistry is
     mapping(bytes32 didHash => DIDRecord record) private _records;
     mapping(address controller => bytes32 didHash) private _didByController;
 
+    IAuditTrail public auditTrail;
+
     /// @dev Reserved so future versions can add storage without shifting existing slots.
-    uint256[47] private __gap;
+    uint256[46] private __gap;
 
     event DIDRegistered(
         bytes32 indexed didHash,
@@ -71,6 +76,7 @@ contract DIDRegistry is
         bytes32 newKeyCommitment
     );
     event DIDStatusChanged(bytes32 indexed didHash, bool active, address indexed changedBy);
+    event AuditTrailUpdated(address indexed previousTrail, address indexed newTrail);
 
     error InvalidDIDHash();
     error InvalidKeyCommitment();
@@ -157,6 +163,7 @@ contract DIDRegistry is
         _didByController[controller] = didHash;
 
         emit DIDRegistered(didHash, controller, keyCommitment, msg.sender, timestamp);
+        _audit(didHash, ActionCodes.DID_REGISTERED, keyCommitment);
     }
 
     // ---------------------------------------------------------------------
@@ -230,6 +237,7 @@ contract DIDRegistry is
         record.updatedAt = uint64(block.timestamp);
 
         emit ControllerRotated(didHash, previousController, newController, consumedNonce, viaSignature);
+        _audit(didHash, ActionCodes.DID_CONTROLLER_ROTATED, bytes32(uint256(uint160(newController))));
     }
 
     /// @notice Replace the commitment to the DID's key material.
@@ -246,6 +254,7 @@ contract DIDRegistry is
         record.updatedAt = uint64(block.timestamp);
 
         emit KeyCommitmentRotated(didHash, previous, newKeyCommitment);
+        _audit(didHash, ActionCodes.DID_KEY_ROTATED, newKeyCommitment);
     }
 
     // ---------------------------------------------------------------------
@@ -261,6 +270,27 @@ contract DIDRegistry is
         record.updatedAt = uint64(block.timestamp);
 
         emit DIDStatusChanged(didHash, active, msg.sender);
+        _audit(didHash, ActionCodes.DID_STATUS_CHANGED, bytes32(uint256(active ? 1 : 0)));
+    }
+
+    /// @notice Wire the append-only audit ledger. This registry must also be allowlisted there.
+    function setAuditTrail(address trail) external onlyRole(ADMIN_ROLE) {
+        if (trail == address(0)) revert ZeroAddress();
+
+        emit AuditTrailUpdated(address(auditTrail), trail);
+        auditTrail = IAuditTrail(trail);
+    }
+
+    /**
+     * @dev Records to the audit trail when one is wired.
+     *
+     * Skipping while unset keeps deployment ordering workable — the trail is deployed
+     * after this registry. Once wired, a rejected log reverts the whole action: an
+     * identity change that escaped the audit trail is worse than one that never happened.
+     */
+    function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
+        if (address(auditTrail) == address(0)) return;
+        auditTrail.logAction(didHash, actionCode, refHash);
     }
 
     function pause() external onlyRole(ADMIN_ROLE) {

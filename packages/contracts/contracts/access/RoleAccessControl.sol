@@ -6,7 +6,9 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
+import {IAuditTrail} from "../interfaces/IAuditTrail.sol";
 import {IDIDResolver} from "../interfaces/IDIDResolver.sol";
+import {ActionCodes} from "../libraries/ActionCodes.sol";
 import {Permissions} from "../libraries/Permissions.sol";
 import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
 
@@ -52,9 +54,10 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
     mapping(bytes32 role => EnumerableSet.AddressSet members) private _roleMembers;
 
     IDIDResolver public didRegistry;
+    IAuditTrail public auditTrail;
 
     /// @dev Reserved so future versions can add storage without shifting existing slots.
-    uint256[44] private __gap;
+    uint256[43] private __gap;
 
     event PermissionUpdated(
         bytes32 indexed role,
@@ -75,6 +78,7 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         address revokedBy
     );
     event DIDRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+    event AuditTrailUpdated(address indexed previousTrail, address indexed newTrail);
 
     error ZeroAddress();
     error InvalidPermission();
@@ -171,6 +175,7 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         }
 
         emit PermissionUpdated(role, permission, allowed, msg.sender);
+        _audit(bytes32(0), ActionCodes.PERMISSION_UPDATED, permission);
     }
 
     /// @notice True when any role held by `account` carries `permission`.
@@ -201,6 +206,14 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
 
         emit DIDRegistryUpdated(address(didRegistry), registry);
         didRegistry = IDIDResolver(registry);
+    }
+
+    /// @notice Wire the append-only audit ledger. This contract must also be allowlisted there.
+    function setAuditTrail(address trail) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (trail == address(0)) revert ZeroAddress();
+
+        emit AuditTrailUpdated(address(auditTrail), trail);
+        auditTrail = IAuditTrail(trail);
     }
 
     /**
@@ -263,6 +276,7 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         if (granted) {
             _accountRoles[account].add(role);
             _roleMembers[role].add(account);
+            _audit(_didOf(account), ActionCodes.ROLE_GRANTED, role);
         }
     }
 
@@ -272,7 +286,27 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         if (revoked) {
             _accountRoles[account].remove(role);
             _roleMembers[role].remove(account);
+            _audit(_didOf(account), ActionCodes.ROLE_REVOKED, role);
         }
+    }
+
+    /// @dev Scope an audit entry to the account's identity when one is resolvable.
+    function _didOf(address account) private view returns (bytes32) {
+        if (address(didRegistry) == address(0)) return bytes32(0);
+        return didRegistry.didOf(account);
+    }
+
+    /**
+     * @dev Records to the audit trail when one is wired.
+     *
+     * Skipping while unset matters more here than elsewhere: {initialize} grants roles
+     * before any trail can exist. Once wired, a rejected log reverts the whole action —
+     * a permission change that escaped the audit trail is worse than one that never
+     * happened.
+     */
+    function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
+        if (address(auditTrail) == address(0)) return;
+        auditTrail.logAction(didHash, actionCode, refHash);
     }
 
     function _authorizeUpgrade(

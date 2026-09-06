@@ -8,8 +8,10 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 
+import {IAuditTrail} from "../interfaces/IAuditTrail.sol";
 import {IDIDResolver} from "../interfaces/IDIDResolver.sol";
 import {IRoleAccessControl} from "../interfaces/IRoleAccessControl.sol";
+import {ActionCodes} from "../libraries/ActionCodes.sol";
 import {Permissions} from "../libraries/Permissions.sol";
 import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
 
@@ -44,6 +46,7 @@ contract AssetRegistry is
 {
     IRoleAccessControl public accessControl;
     IDIDResolver public didRegistry;
+    IAuditTrail public auditTrail;
 
     uint256 private _nextTokenId;
 
@@ -51,7 +54,7 @@ contract AssetRegistry is
     mapping(uint256 tokenId => bool soulbound) private _soulbound;
 
     /// @dev Reserved so future versions can add storage without shifting existing slots.
-    uint256[45] private __gap;
+    uint256[44] private __gap;
 
     event AssetMinted(
         uint256 indexed tokenId,
@@ -75,6 +78,7 @@ contract AssetRegistry is
         address previousController,
         address newController
     );
+    event AuditTrailUpdated(address indexed previousTrail, address indexed newTrail);
 
     error ZeroAddress();
     error NotPermitted(address caller, bytes32 permission);
@@ -158,6 +162,7 @@ contract AssetRegistry is
         _setTokenURI(tokenId, uri);
 
         emit AssetMinted(tokenId, toDID, owner, uri, soulbound, msg.sender);
+        _audit(toDID, ActionCodes.ASSET_MINTED, bytes32(tokenId));
     }
 
     // ---------------------------------------------------------------------
@@ -187,6 +192,14 @@ contract AssetRegistry is
     // ---------------------------------------------------------------------
     // Administration
     // ---------------------------------------------------------------------
+
+    /// @notice Wire the append-only audit ledger. This registry must also be allowlisted there.
+    function setAuditTrail(address trail) external onlyAdmin {
+        if (trail == address(0)) revert ZeroAddress();
+
+        emit AuditTrailUpdated(address(auditTrail), trail);
+        auditTrail = IAuditTrail(trail);
+    }
 
     function pause() external onlyAdmin {
         _pause();
@@ -244,6 +257,7 @@ contract AssetRegistry is
             // Same identity, different key: a reclaim. Permitted even when soulbound,
             // otherwise a lost key would strand the credential forever.
             emit AssetReclaimed(tokenId, fromDID, from, to);
+            _audit(fromDID, ActionCodes.ASSET_RECLAIMED, bytes32(tokenId));
             return from;
         }
 
@@ -258,6 +272,19 @@ contract AssetRegistry is
 
         _ownerDID[tokenId] = toDID;
         emit AssetTransferred(tokenId, fromDID, toDID, from, to);
+        _audit(toDID, ActionCodes.ASSET_TRANSFERRED, bytes32(tokenId));
+    }
+
+    /**
+     * @dev Records to the audit trail when one is wired.
+     *
+     * Skipping while unset keeps deployment ordering workable. Once wired, a rejected
+     * log reverts the whole action — an ownership change that escaped the audit trail
+     * is worse than one that never happened.
+     */
+    function _audit(bytes32 didHash, uint8 actionCode, bytes32 refHash) private {
+        if (address(auditTrail) == address(0)) return;
+        auditTrail.logAction(didHash, actionCode, refHash);
     }
 
     function tokenURI(
