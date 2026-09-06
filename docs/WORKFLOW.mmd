@@ -1,9 +1,3 @@
-# Process Workflow — TrustChain (SIH-26)
-
-End-to-end operational flow. One connected chart: entry, authentication, then a
-branch per role, with every path terminating in the immutable audit trail.
-
-```mermaid
 flowchart TD
 
     START(["User opens the platform"]) --> CONN["Connect wallet"]
@@ -96,21 +90,3 @@ flowchart TD
     PV4 --> PV5["AUTHENTIC + ownership chain"]
     PV3 --> DONE
     PV5 --> DONE
-```
-
-## What each terminal state means
-
-| Outcome               | Cause                                                          |
-| --------------------- | -------------------------------------------------------------- |
-| `Access denied`       | Bad signature, replayed nonce, rate limit, or failed bot check |
-| `Upload refused`      | File rejected at the API boundary before ever reaching IPFS    |
-| `Blocked on-chain`    | Soulbound token, or recipient has no active DID                |
-| `Transaction REVERTS` | Caller's on-chain role lacks the permission                    |
-| `Immutable record`    | Action executed and permanently logged                         |
-
-## Properties this workflow guarantees
-
-1. **Every write path passes through the same on-chain permission gate.** There is no branch in which the backend authorizes a state change by itself.
-2. **Failures are audited too** — a rejected attempt is recorded, not silently dropped.
-3. **Key loss is recoverable without losing assets**: rotating the controller and reclaiming keeps NFTs bound to the DID rather than to a lost key.
-4. **Verification requires no account** — the public path reaches the same on-chain truth as an auditor.

@@ -22,6 +22,7 @@
     "seed": "npm run seed --workspace @trustchain/contracts",
     "coverage": "npm run coverage --workspace @trustchain/contracts",
     "test:tools": "vitest run",
+    "diagrams": "npx -y @mermaid-js/mermaid-cli@11 -i docs/ARCHITECTURE.mmd -o docs/ARCHITECTURE.png -w 2400 -s 2 -b white && npx -y @mermaid-js/mermaid-cli@11 -i docs/WORKFLOW.mmd -o docs/WORKFLOW.png -w 2400 -s 2 -b white",
     "security:secrets": "node tools/scan-secrets.mjs",
     "security:bundle": "npm run build --workspace @trustchain/frontend && node tools/check-frontend-bundle.mjs",
     "security:all": "npm run security:secrets && npm run security:bundle && npm run test:tools",
