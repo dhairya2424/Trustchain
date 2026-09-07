@@ -10,7 +10,12 @@ export interface ProfileDependencies {
   profiles: ProfileRepository;
   logger: Logger;
   /** Resolves the caller's DID from the session. Injected so tests need no auth stack. */
-  resolveCaller: (req: Request) => { didHash: string; address: string } | null;
+  resolveCaller: (
+    req: Request,
+  ) =>
+    | { didHash: string; address: string }
+    | null
+    | Promise<{ didHash: string; address: string } | null>;
 }
 
 export function createProfileRouter(deps: ProfileDependencies): Router {
@@ -19,7 +24,7 @@ export function createProfileRouter(deps: ProfileDependencies): Router {
   router.get(
     "/me",
     asyncHandler(async (req, res) => {
-      const caller = deps.resolveCaller(req);
+      const caller = await deps.resolveCaller(req);
       if (!caller) {
         res.status(401).json({ error: "unauthenticated" });
         return;
@@ -46,7 +51,7 @@ export function createProfileRouter(deps: ProfileDependencies): Router {
   router.patch(
     "/me",
     asyncHandler(async (req, res) => {
-      const caller = deps.resolveCaller(req);
+      const caller = await deps.resolveCaller(req);
       if (!caller) {
         res.status(401).json({ error: "unauthenticated" });
         return;

@@ -3,6 +3,8 @@ import multer from "multer";
 import { nonZeroBytes32 } from "@trustchain/shared";
 import { z } from "zod";
 
+import type { PermissionReader } from "../auth/roleReader";
+import { requirePermission, type CallerResolver } from "../http/authorize";
 import type { Logger } from "../http/logger";
 import { asyncHandler } from "../http/middleware";
 import { stripMetadata } from "./metadata";
@@ -38,17 +40,51 @@ export interface AssetDependencies {
   events: AssetEventSource;
   assets: { find(tokenId: number): Promise<AssetRecord | null> };
   logger: Logger;
-  resolveCaller: (req: Request) => { didHash: string; address: string } | null;
+  resolveCaller: (
+    req: Request,
+  ) =>
+    | { didHash: string; address: string }
+    | null
+    | Promise<{ didHash: string; address: string } | null>;
+  /**
+   * Reads the caller's authority from the chain.
+   *
+   * Required, and the mint route refuses when it is absent. This is not belt-and-braces
+   * with the contract's own check — it is the *only* check on the caller, and leaving it
+   * out is a privilege-escalation bug rather than a missing optimisation. See the comment
+   * on the mint route.
+   */
+  permissions?: PermissionReader;
 }
 
 export function createAssetRouter(deps: AssetDependencies): Router {
   const router = Router();
 
+  /**
+   * Mint an asset.
+   *
+   * The permission gate here is load-bearing in a way that is easy to miss. Minting is
+   * submitted through a relayer, and the relayer signs with its own key — so the
+   * `onlyPermission(MINT_ASSET)` modifier on the contract is checking the *relayer's*
+   * authority, not the caller's. The relayer necessarily holds that permission, or it
+   * could not relay anything. Without a check on the session caller, every authenticated
+   * user inherits the relayer's authority: a textbook confused deputy, and one that the
+   * contract cannot possibly catch because from its side the call is perfectly legitimate.
+   *
+   * So the caller's own on-chain permission is read here, and this is the only place it
+   * is enforced.
+   */
   router.post(
     "/mint",
+    requirePermission({
+      resolve: deps.resolveCaller as CallerResolver,
+      logger: deps.logger,
+      ...(deps.permissions ? { permissions: deps.permissions } : {}),
+      permission: "MINT_ASSET",
+    }),
     upload.single("file"),
     asyncHandler(async (req, res) => {
-      const caller = deps.resolveCaller(req);
+      const caller = await deps.resolveCaller(req);
       if (!caller) {
         res.status(401).json({ error: "unauthenticated" });
         return;

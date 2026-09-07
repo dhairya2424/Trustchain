@@ -87,6 +87,22 @@ export const envSchema = z.object({
   DEFENDER_API_KEY: z.string().optional(),
   DEFENDER_API_SECRET: z.string().optional(),
   DEFENDER_RELAYER_URL: z.string().url().optional(),
+
+  /**
+   * Local development substitutes for Defender and Pinata.
+   *
+   * Both are hosted services, and a system that cannot run end-to-end without a vendor
+   * account cannot be demonstrated or debugged. These let the stack run against a local
+   * chain and filesystem instead. The adapters themselves refuse to construct when
+   * NODE_ENV is "production", and `index.ts` refuses to start if they are configured
+   * there — two independent guards, because arming a local signing key in production is
+   * the single worst configuration mistake available in this codebase.
+   */
+  DEV_RELAYER_PRIVATE_KEY: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{64}$/, "must be a 0x-prefixed 32-byte private key")
+    .optional(),
+  DEV_IPFS_DIR: z.string().min(1).default(".local-ipfs"),
 });
 
 export type Env = z.infer<typeof envSchema>;

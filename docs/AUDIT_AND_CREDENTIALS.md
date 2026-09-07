@@ -301,14 +301,11 @@ anchored.
   (`auditEntries` with `entryId`, `actor`, `via`, …) that nothing currently serves. It is
   tested against a fake, and the chain fallback is the path that actually works today. The
   subgraph manifest is Phase 5 work.
-- **The end-to-end flow in the P2.6 exit check has not been executed.** It needs a running
-  chain, deployed contracts, Redis, Postgres and a Defender relayer. Docker Desktop will not
-  start on this machine. Every control is covered by tests against fakes, and every gate is
-  proven to _reject_ as well as pass, but nobody has run
-  `nonce → verify → mint → audit shows mint` against live infrastructure.
-- **`OnChainCredentialReader` and `DefenderCredentialRelayer` are untested against real
-  endpoints** — same reason. Their logic is exercised through interfaces; the ABI encodings and
-  the Defender request shape are reviewed, not run.
+- **`DefenderCredentialRelayer` and `DefenderRelayer` are still untested against real
+  endpoints.** Defender is a hosted service and nobody has credentials for it here. The
+  local relayer stands in for the end-to-end run, so the Defender request shape is reviewed,
+  not exercised. `OnChainCredentialReader` and the audit chain fallback, by contrast, now run
+  against a real chain — see below.
 - **CORS is still not mounted** (carried over from P2.5). The frontend will need it in Phase 3.
 - **The Nginx config remains unexecuted** (carried over from P2.5), including the new
   `/audit/export.csv` path, which streams and should not be buffered by the proxy.

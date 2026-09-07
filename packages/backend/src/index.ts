@@ -17,10 +17,19 @@ import { createSessionResolver } from "./auth/session";
 import { CursorCodec } from "./audit/cursor";
 import { FallbackAuditSource, OnChainAuditSource, SubgraphAuditSource } from "./audit/events";
 import type { AuditDependencies } from "./audit/routes";
-import { PinataClient } from "./assets/pinata";
+import { PinataClient, type IpfsPinner } from "./assets/pinata";
+import { DefenderRelayer, type TransactionRelayer } from "./assets/relayer";
+import { StubScanner } from "./assets/malware";
+import type { AssetDependencies } from "./assets/routes";
 import { CredentialIssuer } from "./credentials/vc";
-import { DefenderCredentialRelayer, OnChainCredentialReader } from "./credentials/registry";
+import {
+  DefenderCredentialRelayer,
+  OnChainCredentialReader,
+  type CredentialRelayer,
+} from "./credentials/registry";
 import type { CredentialDependencies } from "./credentials/routes";
+import { LocalPinner } from "./dev/localPinner";
+import { LocalRelayer } from "./dev/localRelayer";
 import type { CallerResolver } from "./http/authorize";
 import type { Logger } from "./http/logger";
 
@@ -142,6 +151,99 @@ function buildAudit(
 }
 
 /**
+ * Chooses between the hosted services and the local development substitutes.
+ *
+ * Production must use Defender and Pinata. The guard here is belt-and-braces with the one
+ * inside each adapter: arming a local signing key in production is the worst configuration
+ * mistake this codebase makes available, so it is refused twice, and refused loudly at
+ * boot rather than at the first mint.
+ */
+interface Outbound {
+  relayer: TransactionRelayer & CredentialRelayer;
+  pinner: IpfsPinner;
+  mode: "defender" | "local";
+}
+
+function buildOutbound(env: Env): Outbound | undefined {
+  const hasDefender = Boolean(
+    env.DEFENDER_API_KEY && env.DEFENDER_API_SECRET && env.DEFENDER_RELAYER_URL,
+  );
+
+  if (env.NODE_ENV === "production") {
+    if (env.DEV_RELAYER_PRIVATE_KEY) {
+      throw new Error(
+        "DEV_RELAYER_PRIVATE_KEY is set with NODE_ENV=production. The local relayer holds " +
+          "a signing key in process memory and must never run in production. Remove it and " +
+          "configure Defender.",
+      );
+    }
+    if (!hasDefender) return undefined;
+  }
+
+  if (hasDefender) {
+    return {
+      mode: "defender",
+      relayer: new CombinedDefenderRelayer(env),
+      pinner: new PinataClient({ jwt: env.PINATA_JWT, gateway: env.PINATA_GATEWAY }),
+    };
+  }
+
+  if (!env.DEV_RELAYER_PRIVATE_KEY) return undefined;
+
+  return {
+    mode: "local",
+    relayer: new LocalRelayer({
+      rpcUrl: env.CHAIN_RPC_URL,
+      privateKey: env.DEV_RELAYER_PRIVATE_KEY,
+      assetRegistryAddress: env.ASSET_REGISTRY_ADDRESS,
+      credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
+    }),
+    pinner: new LocalPinner({ directory: env.DEV_IPFS_DIR, gateway: env.PINATA_GATEWAY }),
+  };
+}
+
+/**
+ * Adapts the two Defender relayers to the single interface the routers want.
+ *
+ * The asset and credential relayers are separate classes because they target different
+ * contracts; the composition root is the right place to join them rather than making
+ * either one know about the other.
+ */
+class CombinedDefenderRelayer implements TransactionRelayer, CredentialRelayer {
+  private readonly assets: DefenderRelayer;
+  private readonly credentials: DefenderCredentialRelayer;
+
+  constructor(env: Env) {
+    const shared = {
+      apiKey: env.DEFENDER_API_KEY as string,
+      apiSecret: env.DEFENDER_API_SECRET as string,
+      relayerUrl: env.DEFENDER_RELAYER_URL as string,
+    };
+
+    this.assets = new DefenderRelayer({
+      ...shared,
+      assetRegistryAddress: env.ASSET_REGISTRY_ADDRESS,
+    });
+    this.credentials = new DefenderCredentialRelayer({
+      ...shared,
+      credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
+    });
+  }
+
+  relayMint(request: Parameters<TransactionRelayer["relayMint"]>[0]) {
+    return this.assets.relayMint(request);
+  }
+
+  relayIssue(tx: Parameters<CredentialRelayer["relayIssue"]>[0]) {
+    return this.credentials.relayIssue(tx);
+  }
+
+  relayRevoke(tx: Parameters<CredentialRelayer["relayRevoke"]>[0]) {
+    return this.credentials.relayRevoke(tx);
+  }
+}
+
+/**
  * Credential issuance, verification and revocation.
  *
  * Returns undefined when no relayer is configured. Mounting the routes without one would
@@ -154,10 +256,9 @@ function buildCredentials(
   platform: Platform,
   logger: Logger,
   resolveCaller: CallerResolver,
+  outbound: Outbound | undefined,
 ): CredentialDependencies | undefined {
-  if (!env.DEFENDER_API_KEY || !env.DEFENDER_API_SECRET || !env.DEFENDER_RELAYER_URL) {
-    return undefined;
-  }
+  if (!outbound) return undefined;
 
   return {
     issuer: new CredentialIssuer(
@@ -168,16 +269,46 @@ function buildCredentials(
       platform.publicClient,
       env.CREDENTIAL_REGISTRY_ADDRESS as Address,
     ),
-    relayer: new DefenderCredentialRelayer({
-      apiKey: env.DEFENDER_API_KEY,
-      apiSecret: env.DEFENDER_API_SECRET,
-      relayerUrl: env.DEFENDER_RELAYER_URL,
-      credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
-    }),
-    pinner: new PinataClient({ jwt: env.PINATA_JWT, gateway: env.PINATA_GATEWAY }),
+    relayer: outbound.relayer,
+    pinner: outbound.pinner,
     logger,
     resolveCaller,
     permissions: platform.roles,
+  };
+}
+
+/**
+ * Asset minting.
+ *
+ * The read routes (`GET /assets/:id`, `/provenance`) are wired to sources that report
+ * "not found" rather than fabricated data: the asset repository and the asset event
+ * indexer are not implemented yet. Returning an honest 404 is the only acceptable
+ * placeholder for a route whose job is to state what someone owns.
+ */
+function buildAssets(
+  env: Env,
+  platform: Platform,
+  logger: Logger,
+  resolveCaller: CallerResolver,
+  outbound: Outbound | undefined,
+): AssetDependencies | undefined {
+  if (!outbound) return undefined;
+
+  return {
+    scanner: new StubScanner(),
+    pinner: outbound.pinner,
+    relayer: outbound.relayer,
+    events: { eventsForToken: async () => [] },
+    assets: { find: async () => null },
+    logger,
+    permissions: platform.roles,
+    // Minting is bound to an identity, so a caller with no registered DID cannot mint —
+    // the contract would reject it anyway, and failing here is the cheaper rejection.
+    resolveCaller: async (req) => {
+      const caller = await resolveCaller(req);
+      if (!caller?.didHash) return null;
+      return { didHash: caller.didHash, address: caller.address };
+    },
   };
 }
 
@@ -203,13 +334,25 @@ function main(): void {
   const logger = new PinoLogger(pino);
 
   const resolveCaller = createSessionResolver({ tokens: platform.tokens, logger });
-  const credentials = buildCredentials(env, platform, logger, resolveCaller);
 
-  if (!credentials) {
+  const outbound = buildOutbound(env);
+  const credentials = buildCredentials(env, platform, logger, resolveCaller, outbound);
+  const assets = buildAssets(env, platform, logger, resolveCaller, outbound);
+
+  if (!outbound) {
     logger.log({
       level: "warn",
-      msg: "credentials.routes_not_mounted",
-      reason: "DEFENDER_API_KEY, DEFENDER_API_SECRET and DEFENDER_RELAYER_URL are required",
+      msg: "outbound.not_configured",
+      detail: "asset and credential write routes are not mounted",
+      reason:
+        "configure DEFENDER_API_KEY, DEFENDER_API_SECRET and DEFENDER_RELAYER_URL, " +
+        "or DEV_RELAYER_PRIVATE_KEY for local development",
+    });
+  } else if (outbound.mode === "local") {
+    logger.log({
+      level: "warn",
+      msg: "outbound.local_adapters_active",
+      detail: "signing locally and storing content on the filesystem; NOT suitable for production",
     });
   }
 
@@ -218,6 +361,7 @@ function main(): void {
     logger,
     audit: buildAudit(env, platform, logger, resolveCaller),
     ...(credentials ? { credentials } : {}),
+    ...(assets ? { assets } : {}),
     httpLogger: httpLogger(pino),
     security: {
       // TLS is terminated by Nginx in production, so a plain-HTTP request there means the

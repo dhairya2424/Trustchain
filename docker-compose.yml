@@ -10,7 +10,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-trustchain_dev_only}
       POSTGRES_DB: ${POSTGRES_DB:-trustchain}
     ports:
-      - "5432:5432"
+      # Overridable: a machine may already run Postgres on 5432, and a published port
+      # that silently loses to an existing service sends the app to the wrong database.
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +28,9 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6379:6379"
+      # Overridable for the same reason. An old native Redis on 6379 will shadow this
+      # container and answer with a version too old for the commands the API uses.
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -42,7 +46,7 @@ services:
     container_name: trustchain-hardhat
     restart: unless-stopped
     ports:
-      - "8545:8545"
+      - "${HARDHAT_PORT:-8545}:8545"
     healthcheck:
       test: ["CMD", "node", "/app/infra/healthcheck.mjs"]
       interval: 10s

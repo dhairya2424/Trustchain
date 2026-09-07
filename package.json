@@ -2,7 +2,7 @@
   "name": "sih-26",
   "version": "1.0.0",
   "private": true,
-  "description": "TrustChain — decentralized identity, on-chain RBAC and NFT-based asset ownership",
+  "description": "TrustChain \u2014 decentralized identity, on-chain RBAC and NFT-based asset ownership",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -32,7 +32,9 @@
     "security:bundle": "npm run build --workspace @trustchain/frontend && node tools/check-frontend-bundle.mjs",
     "security:all": "npm run security:secrets && npm run security:sql && npm run security:xss && npm run security:deps && npm run security:bundle && npm run test:tools",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\""
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\"",
+    "e2e": "node tools/e2e-flow.mjs",
+    "dev:env": "node tools/gen-dev-env.mjs"
   },
   "comments": {
     "overrides": "Patched transitive dependencies pulled in by the Hardhat 2 toolchain. npm's own fix for each of these is a major upgrade to Hardhat 3, which is a config-format rewrite we are not taking mid-build. Each pin below stays inside the dependant's expected major, so the toolchain API is unchanged. Revisit when migrating to Hardhat 3."
