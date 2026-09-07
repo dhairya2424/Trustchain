@@ -134,6 +134,39 @@ async function signIn(privateKey, { turnstileToken = TURNSTILE_TEST_TOKEN } = {}
   return { account, jar, verify, nonce };
 }
 
+/**
+ * The highest audit entry id currently on chain.
+ *
+ * Captured before an action so the wait below can tell a NEW entry from one left by an
+ * earlier run. The chain persists between runs, so "is there a CREDENTIAL_ISSUED entry?"
+ * is almost always true and answers the wrong question.
+ */
+async function latestEntryId(jar) {
+  const res = await call("GET", "/audit?limit=1", { jar });
+  return res.body?.entries?.[0]?.entryId ?? -1;
+}
+
+/**
+ * Waits for an action to be recorded *after* a given entry id.
+ *
+ * The relayer is asynchronous: it accepts a transaction, queues it, and submits it on its
+ * own workers, so a 202 means "accepted for submission" and not "mined". Asserting the
+ * audit trail immediately afterwards would be a race that passes or fails depending on how
+ * fast the machine is. Polling to a deadline is what a real client would do.
+ */
+async function waitForAction(jar, action, since, timeoutMs = 90_000) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const res = await call("GET", `/audit?action=${action}&limit=10`, { jar });
+    const fresh = (res.body?.entries ?? []).find((e) => e.entryId > since);
+    if (fresh) return fresh;
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  return null;
+}
+
 function didHashFor(address) {
   return keccak256(toBytes(`did:trustchain:local:${address.toLowerCase()}`));
 }
@@ -321,15 +354,18 @@ async function main() {
   );
   form.append("file", new Blob([png], { type: "image/png" }), "pixel.png");
 
+  const beforeMintId = await latestEntryId(admin.jar);
   const mint = await call("POST", "/assets/mint", { jar: manager.jar, body: form, json: false });
   check(
     "POST /assets/mint is accepted",
     mint.status === 202,
     `got ${mint.status} ${JSON.stringify(mint.body).slice(0, 300)}`,
   );
+  // 202 means "accepted for submission", not "mined": the relayer queues and submits on
+  // its own workers. Whether it landed is asserted later, against the audit trail.
   check(
-    "the mint was relayed and mined",
-    mint.body?.status === "mined",
+    "the mint was accepted for relaying",
+    ["pending", "mined"].includes(mint.body?.status),
     JSON.stringify(mint.body?.status),
   );
   check(
@@ -354,6 +390,10 @@ async function main() {
   // ---------------------------------------------------------------- audit shows it
   section("5. The audit trail shows the mint");
 
+  // The relayer submits asynchronously, so wait for the mint to land before asserting.
+  const mintEntryPolled = await waitForAction(admin.jar, "ASSET_MINTED", beforeMintId);
+  check("the mint reached the chain within the timeout", mintEntryPolled !== null);
+
   const after = await call("GET", "/audit?limit=100", { jar: admin.jar });
   check("GET /audit still succeeds", after.status === 200);
 
@@ -365,10 +405,19 @@ async function main() {
     Boolean(mintEntry),
     `actions seen: ${[...new Set(entries.map((e) => e.action))].join(", ") || "none"}`,
   );
+  /*
+   * The on-chain actor is the RELAYER, not the human who asked for the mint.
+   *
+   * This is a real and important consequence of relaying: the chain records whoever signed
+   * the transaction, and that is always the relayer's signer. The requesting account is
+   * known only off-chain, in the API's structured log, which carries the actor alongside
+   * the same transaction id. See docs/NETWORKS.md.
+   */
+  const relayerAddress = (await call("GET", "/network")).body?.active?.signerAddress ?? "";
   check(
-    "the entry attributes the initiating account, not the contract",
-    mintEntry?.actor?.toLowerCase() === privateKeyToAccount(MANAGER_KEY).address.toLowerCase(),
-    `actor=${mintEntry?.actor}`,
+    "the entry attributes the account that signed — the relayer",
+    mintEntry?.actor?.toLowerCase() === relayerAddress.toLowerCase(),
+    `actor=${mintEntry?.actor} relayer=${relayerAddress}`,
   );
   check(
     "`via` is the AssetRegistry contract, distinct from the actor",
@@ -400,6 +449,7 @@ async function main() {
   // ---------------------------------------------------------------- credentials
   section("6. Credential lifecycle");
 
+  const beforeIssueId = await latestEntryId(admin.jar);
   const issue = await call("POST", "/credentials/issue", {
     jar: manager.jar,
     body: {
@@ -458,6 +508,10 @@ async function main() {
   });
   check("a USER cannot issue a credential", userIssue.status === 403, `got ${userIssue.status}`);
 
+  // Issuance is relayed asynchronously too; the credential is not anchored until it lands.
+  const issuedEntry = await waitForAction(admin.jar, "CREDENTIAL_ISSUED", beforeIssueId);
+  check("the issuance reached the chain within the timeout", issuedEntry !== null);
+
   const verifyPublic = await call("POST", "/credentials/verify", {
     body: { jwt: issue.body?.jwt },
   });
@@ -483,12 +537,15 @@ async function main() {
     JSON.stringify(forged.body?.proof?.signatureValid),
   );
 
+  const beforeRevokeId = await latestEntryId(admin.jar);
   const revoke = await call("POST", "/credentials/revoke", {
     jar: manager.jar,
     body: { credentialHash: issue.body?.credentialHash, reasonCode: 1 },
   });
   check("revocation is accepted", revoke.status === 202, `got ${revoke.status}`);
 
+  const revokedEntry = await waitForAction(admin.jar, "CREDENTIAL_REVOKED", beforeRevokeId);
+  check("the revocation reached the chain within the timeout", revokedEntry !== null);
   const afterRevoke = await call("POST", "/credentials/verify", {
     body: { jwt: issue.body?.jwt },
   });

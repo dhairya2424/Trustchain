@@ -12,13 +12,17 @@ import { requirePermission, type CallerResolver } from "../http/authorize";
 import { asyncHandler } from "../http/middleware";
 import type { Logger } from "../http/logger";
 import { sealCredential } from "./envelope";
-import type { CredentialReader, CredentialRelayer } from "./registry";
+import type { ChainResolver } from "../chain/binding";
+import { explorerTxUrl } from "../chain/networks";
+import { toNetworkDto } from "../chain/routes";
+import type { CredentialReader } from "./registry";
 import { CredentialError, credentialHashOf, type CredentialIssuer } from "./vc";
 
 export interface CredentialDependencies {
   issuer: CredentialIssuer;
   reader: CredentialReader;
-  relayer: CredentialRelayer;
+  /** Network and relayer as one object, so a response cannot name the wrong chain. */
+  chain: ChainResolver;
   pinner: IpfsPinner;
   logger: Logger;
   resolveCaller: CallerResolver;
@@ -110,7 +114,8 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         `credential-${issued.credentialHash.slice(2, 18)}`,
       );
 
-      const relayed = await deps.relayer.relayIssue({
+      const chain = await deps.chain.active();
+      const relayed = await chain.relayer.relayIssue({
         credentialHash: issued.credentialHash,
         didHash,
         schemaId: issued.schemaId,
@@ -131,6 +136,7 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         cid: pinned.cid,
         expiresAt,
         transactionId: relayed.transactionId,
+        network: chain.network.id,
       });
 
       res.status(202).json({
@@ -143,6 +149,8 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         contentKey: sealed.contentKey,
         envelopeUri: pinned.uri,
         expiresAt,
+        network: toNetworkDto(chain.network),
+        explorerUrl: relayed.hash ? explorerTxUrl(chain.network, relayed.hash) : null,
       });
     }),
   );
@@ -304,7 +312,8 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         return;
       }
 
-      const relayed = await deps.relayer.relayRevoke({ credentialHash, reasonCode });
+      const chain = await deps.chain.active();
+      const relayed = await chain.relayer.relayRevoke({ credentialHash, reasonCode });
 
       deps.logger.log({
         level: "warn",
@@ -314,6 +323,7 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         credentialHash,
         reasonCode,
         transactionId: relayed.transactionId,
+        network: chain.network.id,
       });
 
       res.status(202).json({
@@ -321,6 +331,8 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         transactionId: relayed.transactionId,
         credentialHash,
         reasonCode,
+        network: toNetworkDto(chain.network),
+        explorerUrl: relayed.hash ? explorerTxUrl(chain.network, relayed.hash) : null,
       });
     }),
   );

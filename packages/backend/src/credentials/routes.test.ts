@@ -4,6 +4,8 @@ import { generateKeyPairSync } from "node:crypto";
 import { RateLimiterMemory } from "rate-limiter-flexible";
 
 import { createServer } from "../server";
+import { staticResolver } from "../chain/binding";
+import { HARDHAT } from "../chain/networks";
 import { MemoryLogger } from "../http/logger";
 import type { Caller } from "../http/authorize";
 import { ROLE_IDS } from "../auth/roles";
@@ -51,16 +53,20 @@ function build(options: Harness = {}) {
         return options.snapshot ?? { status: "valid", credential: onChain() };
       },
     },
-    relayer: {
-      relayIssue: async (tx) => {
-        issued.push(tx);
-        return { transactionId: "tx-issue-1", status: "pending" as const };
+    chain: staticResolver({
+      network: HARDHAT,
+      relayer: {
+        relayMint: async () => ({ transactionId: "tx-mint", status: "pending" as const }),
+        relayIssue: async (tx) => {
+          issued.push(tx);
+          return { transactionId: "tx-issue-1", status: "pending" as const };
+        },
+        relayRevoke: async (tx) => {
+          revoked.push(tx);
+          return { transactionId: "tx-revoke-1", status: "pending" as const };
+        },
       },
-      relayRevoke: async (tx) => {
-        revoked.push(tx);
-        return { transactionId: "tx-revoke-1", status: "pending" as const };
-      },
-    },
+    }),
     pinner: {
       pinFile: async () => {
         throw new Error("not used");
@@ -517,13 +523,18 @@ describe("routes are absent when the module is not configured", () => {
 describe("issuance is not reachable without a permission reader", () => {
   it("fails closed rather than trusting the session's role claims", async () => {
     const logger = new MemoryLogger();
+    const relayIssueSpy = vi.fn(async () => ({ transactionId: "x", status: "pending" as const }));
     const deps = {
       issuer,
       reader: { statusOf: async () => ({ status: "valid" as const, credential: onChain() }) },
-      relayer: {
-        relayIssue: vi.fn(async () => ({ transactionId: "x", status: "pending" as const })),
-        relayRevoke: vi.fn(async () => ({ transactionId: "x", status: "pending" as const })),
-      },
+      chain: staticResolver({
+        network: HARDHAT,
+        relayer: {
+          relayMint: async () => ({ transactionId: "x", status: "pending" as const }),
+          relayIssue: relayIssueSpy,
+          relayRevoke: vi.fn(async () => ({ transactionId: "x", status: "pending" as const })),
+        },
+      }),
       pinner: {
         pinFile: async () => {
           throw new Error("unused");
@@ -538,6 +549,6 @@ describe("issuance is not reachable without a permission reader", () => {
     const res = await request(app).post("/credentials/issue").send(issueBody);
 
     expect(res.status).toBe(503);
-    expect(deps.relayer.relayIssue).not.toHaveBeenCalled();
+    expect(relayIssueSpy).not.toHaveBeenCalled();
   });
 });

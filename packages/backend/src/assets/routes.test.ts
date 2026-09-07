@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
 import { createServer } from "../server";
+import { staticResolver } from "../chain/binding";
+import { HARDHAT } from "../chain/networks";
 import { MemoryLogger } from "../http/logger";
 import type { AssetDependencies } from "./routes";
 
@@ -59,7 +61,14 @@ function build(options: Harness = {}) {
       }),
       pinJson,
     },
-    relayer: { relayMint },
+    chain: staticResolver({
+      network: HARDHAT,
+      relayer: {
+        relayMint,
+        relayIssue: async () => ({ transactionId: "x", status: "pending" as const }),
+        relayRevoke: async () => ({ transactionId: "x", status: "pending" as const }),
+      },
+    }),
     events: { eventsForToken: async () => [] },
     assets: { find: async () => null },
     logger,
@@ -149,7 +158,14 @@ describe("POST /assets/mint — authorization", () => {
           pinFile: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
           pinJson: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
         },
-        relayer: { relayMint },
+        chain: staticResolver({
+          network: HARDHAT,
+          relayer: {
+            relayMint,
+            relayIssue: async () => ({ transactionId: "x", status: "pending" as const }),
+            relayRevoke: async () => ({ transactionId: "x", status: "pending" as const }),
+          },
+        }),
         events: { eventsForToken: async () => [] },
         assets: { find: async () => null },
         logger,
@@ -252,7 +268,14 @@ describe("POST /assets/mint — validation still applies after the gate", () => 
           pinFile: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
           pinJson: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
         },
-        relayer: { relayMint },
+        chain: staticResolver({
+          network: HARDHAT,
+          relayer: {
+            relayMint,
+            relayIssue: async () => ({ transactionId: "x", status: "pending" as const }),
+            relayRevoke: async () => ({ transactionId: "x", status: "pending" as const }),
+          },
+        }),
         events: { eventsForToken: async () => [] },
         assets: { find: async () => null },
         logger,

@@ -97,9 +97,26 @@ export const envSchema = z.object({
    * mounted and failing at the last step.
    */
   RELAYER_URL: z.string().url().optional(),
-  RELAYER_ID: z.string().min(1).optional(),
   RELAYER_API_KEY: z.string().min(1).optional(),
   RELAYER_SPEED: z.enum(["safeLow", "average", "fast", "fastest"]).default("average"),
+
+  /**
+   * Where the deploy script writes its records.
+   *
+   * The selector reads contract addresses from these rather than from environment
+   * variables, so there is one source of truth per network and no chance of an address
+   * being copied into the wrong variable — a mistake that fails silently, by sending
+   * transactions to an address where nothing lives.
+   */
+  DEPLOYMENTS_DIR: z.string().min(1).default("../contracts/deployments"),
+
+  /**
+   * How long a network selection is trusted before re-probing.
+   *
+   * Short enough that funding the Amoy signer takes effect on its own, long enough that a
+   * burst of requests does not probe the chain once per request.
+   */
+  NETWORK_PROBE_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(60),
 
   /**
    * Polygon Amoy endpoint.

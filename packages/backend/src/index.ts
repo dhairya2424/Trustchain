@@ -15,14 +15,17 @@ import { RedisStore } from "./store/kv";
 import type { AuthDependencies } from "./auth/routes";
 import { createSessionResolver } from "./auth/session";
 import { CursorCodec } from "./audit/cursor";
-import { FallbackAuditSource, OnChainAuditSource, SubgraphAuditSource } from "./audit/events";
 import type { AuditDependencies } from "./audit/routes";
 import { PinataClient, type IpfsPinner } from "./assets/pinata";
 import { StubScanner } from "./assets/malware";
 import type { AssetDependencies } from "./assets/routes";
-import { OpenZeppelinRelayerClient } from "./chain/relayerClient";
+import { NetworkSelector } from "./chain/networkSelector";
 import { CredentialIssuer } from "./credentials/vc";
-import { OnChainCredentialReader } from "./credentials/registry";
+import {
+  SelectedAuditSource,
+  SelectedCredentialReader,
+  SelectedPermissionReader,
+} from "./chain/selected";
 import type { CredentialDependencies } from "./credentials/routes";
 import { LocalPinner } from "./dev/localPinner";
 import type { CallerResolver } from "./http/authorize";
@@ -114,69 +117,64 @@ function buildAuth(env: Env): Platform {
  */
 function buildAudit(
   env: Env,
-  platform: Platform,
+  selector: NetworkSelector,
   logger: Logger,
   resolveCaller: CallerResolver,
 ): AuditDependencies {
-  const events = new FallbackAuditSource(
-    new SubgraphAuditSource(env.SUBGRAPH_URL),
-    new OnChainAuditSource({
-      client: platform.publicClient,
-      address: env.AUDIT_TRAIL_ADDRESS as Address,
-      deploymentBlock: BigInt(env.AUDIT_TRAIL_DEPLOYMENT_BLOCK),
-    }),
-    (error) => {
-      logger.log({
-        level: "warn",
-        msg: "audit.subgraph_fallback",
-        detail: error instanceof Error ? error.message : "unknown",
-      });
-    },
-  );
-
   return {
-    events,
+    events: new SelectedAuditSource(selector, {
+      logger,
+      // Only Amoy has a subgraph; the local chain is read directly. Keyed by network so a
+      // switch cannot point the indexer of one chain at the addresses of another.
+      subgraphUrls: { amoy: env.SUBGRAPH_URL },
+      deploymentBlocks: { amoy: BigInt(env.AUDIT_TRAIL_DEPLOYMENT_BLOCK) },
+    }),
     cursors: new CursorCodec(env.FIELD_ENCRYPTION_KEY),
     logger,
     resolveCaller,
-    permissions: platform.roles,
+    permissions: new SelectedPermissionReader(selector),
     maxExportRows: env.AUDIT_MAX_EXPORT_ROWS,
   };
 }
 
 /**
- * Where transactions are signed.
+ * Network selection.
  *
- * Always the self-hosted OpenZeppelin Relayer. This process holds an API credential that
- * authorises *requesting* a transaction; the signing key lives in that service and is
- * declared by its own config.json. Migrating the local encrypted keystore to AWS KMS is a
- * change to that file — nothing here, and nothing in the routes, is aware of it.
+ * Polygon Amoy is the primary target and is used whenever it can genuinely carry a
+ * transaction; local Hardhat is the fallback. The selector re-probes on a short TTL, so a
+ * newly funded Amoy signer is adopted without a restart and without any architectural
+ * change — the contracts, DID logic, RBAC, provenance and audit trail are identical on
+ * both.
  *
- * Returns undefined when the relayer is not configured, in which case the write routes are
- * not mounted at all. Mounting them without a relayer would give an endpoint that
- * authenticates, authorises, signs a credential and then fails at the last step — having
- * already handed the caller a JWT for a credential that was never anchored.
+ * Returns undefined when the relayer service is not configured at all, in which case the
+ * write routes are not mounted rather than mounted and failing at the last step.
  */
-function buildRelayer(env: Env): OpenZeppelinRelayerClient | undefined {
-  if (!env.RELAYER_URL || !env.RELAYER_ID || !env.RELAYER_API_KEY) return undefined;
+function buildSelector(env: Env, logger: Logger): NetworkSelector | undefined {
+  if (!env.RELAYER_URL || !env.RELAYER_API_KEY) return undefined;
 
-  return new OpenZeppelinRelayerClient({
-    baseUrl: env.RELAYER_URL,
-    relayerId: env.RELAYER_ID,
-    apiKey: env.RELAYER_API_KEY,
-    assetRegistryAddress: env.ASSET_REGISTRY_ADDRESS,
-    credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
-    speed: env.RELAYER_SPEED,
+  return new NetworkSelector({
+    logger,
+    deploymentsDir: env.DEPLOYMENTS_DIR,
+    rpcUrls: {
+      // Amoy is only a candidate when an endpoint is configured for it.
+      ...(env.POLYGON_AMOY_RPC_URL ? { amoy: env.POLYGON_AMOY_RPC_URL } : {}),
+      hardhat: env.CHAIN_RPC_URL,
+    },
+    relayer: {
+      baseUrl: env.RELAYER_URL,
+      apiKey: env.RELAYER_API_KEY,
+      speed: env.RELAYER_SPEED,
+    },
+    ttlMs: env.NETWORK_PROBE_TTL_SECONDS * 1000,
   });
 }
 
 /**
  * Where content is pinned.
  *
- * Chosen independently of the relayer, because pinning and signing are unrelated concerns:
- * a deployment may legitimately pin to real Pinata while signing against a local chain, or
- * the reverse. Bundling the two decisions — as an earlier version of this file did — makes
- * one impossible to configure without the other.
+ * Chosen independently of the network and the relayer, because pinning and signing are
+ * unrelated concerns: a deployment may legitimately pin to real Pinata while signing
+ * against a local chain, or the reverse.
  *
  * Pinata when a real credential is present; otherwise the local filesystem stand-in, which
  * refuses to construct under NODE_ENV=production.
@@ -210,25 +208,22 @@ function buildCredentials(
   platform: Platform,
   logger: Logger,
   resolveCaller: CallerResolver,
-  relayer: OpenZeppelinRelayerClient | undefined,
+  chain: NetworkSelector | undefined,
   pinner: IpfsPinner,
 ): CredentialDependencies | undefined {
-  if (!relayer) return undefined;
+  if (!chain) return undefined;
 
   return {
     issuer: new CredentialIssuer(
       { privateKeyPem: env.CREDENTIAL_PRIVATE_KEY, publicKeyPem: env.CREDENTIAL_PUBLIC_KEY },
       env.CREDENTIAL_ISSUER_ID,
     ),
-    reader: new OnChainCredentialReader(
-      platform.publicClient,
-      env.CREDENTIAL_REGISTRY_ADDRESS as Address,
-    ),
-    relayer,
+    reader: new SelectedCredentialReader(chain),
+    chain,
     pinner,
     logger,
     resolveCaller,
-    permissions: platform.roles,
+    permissions: new SelectedPermissionReader(chain),
   };
 }
 
@@ -245,19 +240,19 @@ function buildAssets(
   platform: Platform,
   logger: Logger,
   resolveCaller: CallerResolver,
-  relayer: OpenZeppelinRelayerClient | undefined,
+  chain: NetworkSelector | undefined,
   pinner: IpfsPinner,
 ): AssetDependencies | undefined {
-  if (!relayer) return undefined;
+  if (!chain) return undefined;
 
   return {
     scanner: new StubScanner(),
     pinner,
-    relayer,
+    chain,
     events: { eventsForToken: async () => [] },
     assets: { find: async () => null },
     logger,
-    permissions: platform.roles,
+    permissions: new SelectedPermissionReader(chain),
     // Minting is bound to an identity, so a caller with no registered DID cannot mint —
     // the contract would reject it anyway, and failing here is the cheaper rejection.
     resolveCaller: async (req) => {
@@ -290,26 +285,27 @@ function main(): void {
   const logger = new PinoLogger(pino);
 
   const resolveCaller = createSessionResolver({ tokens: platform.tokens, logger });
-  const relayer = buildRelayer(env);
+  const selector = buildSelector(env, logger);
   const pinner = buildPinner(env, logger);
-  const credentials = buildCredentials(env, platform, logger, resolveCaller, relayer, pinner);
-  const assets = buildAssets(env, platform, logger, resolveCaller, relayer, pinner);
+  const credentials = buildCredentials(env, platform, logger, resolveCaller, selector, pinner);
+  const assets = buildAssets(env, platform, logger, resolveCaller, selector, pinner);
 
-  if (!relayer) {
+  if (!selector) {
     logger.log({
       level: "warn",
       msg: "relayer.not_configured",
       detail: "asset and credential write routes are not mounted",
-      reason: "set RELAYER_URL, RELAYER_ID and RELAYER_API_KEY",
+      reason: "set RELAYER_URL and RELAYER_API_KEY",
     });
   }
 
   const app = createServer({
     auth,
     logger,
-    audit: buildAudit(env, platform, logger, resolveCaller),
+    ...(selector ? { audit: buildAudit(env, selector, logger, resolveCaller) } : {}),
     ...(credentials ? { credentials } : {}),
     ...(assets ? { assets } : {}),
+    ...(selector ? { network: { selector, logger } } : {}),
     httpLogger: httpLogger(pino),
     security: {
       // TLS is terminated by Nginx in production, so a plain-HTTP request there means the

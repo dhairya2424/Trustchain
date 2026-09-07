@@ -47,7 +47,13 @@ function main() {
   // The commentary belongs to the template, not to the runtime configuration.
   delete template._comment;
 
-  const rendered = JSON.stringify(template).replace(/\$\{AMOY_RPC_URL\}/g, rpcUrl);
+  // The Hardhat node is reached over the compose network, not localhost: inside the
+  // relayer container "localhost" is the container itself.
+  const hardhatUrl = process.env.HARDHAT_RPC_URL ?? "http://hardhat:8545";
+
+  const rendered = JSON.stringify(template)
+    .replace(/\$\{AMOY_RPC_URL\}/g, rpcUrl)
+    .replace(/\$\{HARDHAT_RPC_URL\}/g, hardhatUrl);
 
   const unresolved = rendered.match(/\$\{[A-Z_]+\}/g);
   if (unresolved) {
@@ -66,7 +72,9 @@ function main() {
   }
 
   console.log(`wrote ${path.relative(repoRoot, outPath)}`);
-  console.log(`  network: amoy (chain id 80002)`);
+  console.log(`  networks: amoy (80002, primary), hardhat (31337, fallback)`);
+  console.log(`  relayers: trustchain-amoy, trustchain-hardhat — one shared signer`);
+  console.log(`  hardhat rpc: ${hardhatUrl}`);
   console.log(`  rpc host: ${host} — path and key not shown`);
   console.log(`  signer: trustchain-local-signer (local encrypted keystore)`);
 }

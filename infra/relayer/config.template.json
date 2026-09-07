@@ -10,9 +10,15 @@
     "API key. Committing this file with the key inlined would put a live credential in git",
     "history, so the generated file is the one the service reads and the one git ignores.",
     "",
+    "TWO relayers share ONE signer: trustchain-amoy (primary) and trustchain-hardhat",
+    "(fallback). The backend chooses between them at runtime — see docs/NETWORKS.md.",
+    "Declaring both here is what lets the fallback use exactly the same signing path as the",
+    "primary, rather than a second and less-tested one.",
+    "",
     "The signer below is the ONLY thing that changes when moving to AWS KMS: replace the",
     "`local` signer with an `aws_kms` one and restart the container. No application code,",
-    "no interface, and no test is aware of which signer is in use."
+    "no interface, and no test is aware of which signer is in use — and because both",
+    "relayers reference the same signer_id, the migration covers both networks at once."
   ],
 
   "networks": [
@@ -24,8 +30,19 @@
       "is_testnet": true,
       "required_confirmations": 1,
       "average_blocktime_ms": 2000,
-      "tags": ["polygon", "testnet"],
+      "tags": ["polygon", "testnet", "primary"],
       "rpc_urls": ["${AMOY_RPC_URL}"]
+    },
+    {
+      "type": "evm",
+      "network": "hardhat",
+      "chain_id": 31337,
+      "symbol": "ETH",
+      "is_testnet": true,
+      "required_confirmations": 1,
+      "average_blocktime_ms": 1000,
+      "tags": ["local", "fallback"],
+      "rpc_urls": ["${HARDHAT_RPC_URL}"]
     }
   ],
 
@@ -48,6 +65,18 @@
       "id": "trustchain-amoy",
       "name": "TrustChain Amoy",
       "network": "amoy",
+      "network_type": "evm",
+      "paused": false,
+      "signer_id": "trustchain-local-signer",
+      "policies": {
+        "eip1559_pricing": true,
+        "min_balance": 0
+      }
+    },
+    {
+      "id": "trustchain-hardhat",
+      "name": "TrustChain Local Hardhat",
+      "network": "hardhat",
       "network_type": "evm",
       "paused": false,
       "signer_id": "trustchain-local-signer",

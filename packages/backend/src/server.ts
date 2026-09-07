@@ -4,6 +4,7 @@ import { updateProfileRequest } from "@trustchain/shared";
 
 import { createAssetRouter, type AssetDependencies } from "./assets/routes";
 import { createAuditRouter, type AuditDependencies } from "./audit/routes";
+import { createNetworkRouter, type NetworkDependencies } from "./chain/routes";
 import { createAuthRouter, type AuthDependencies } from "./auth/routes";
 import { createCredentialRouter, type CredentialDependencies } from "./credentials/routes";
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
@@ -23,6 +24,8 @@ export interface ServerOptions {
   profiles?: ProfileDependencies;
   assets?: AssetDependencies;
   audit?: AuditDependencies;
+  /** Reports which chain is active. Public — see chain/routes.ts. */
+  network?: NetworkDependencies;
   credentials?: CredentialDependencies;
   logger?: Logger;
   security?: SecurityOptions;
@@ -85,6 +88,10 @@ export function createServer(options: ServerOptions = {}): Express {
 
   if (options.assets) {
     app.use("/assets", createAssetRouter(options.assets));
+  }
+
+  if (options.network) {
+    app.use("/network", createNetworkRouter(options.network));
   }
 
   if (options.audit) {

@@ -70,7 +70,7 @@ services:
     container_name: trustchain-relayer
     restart: unless-stopped
     depends_on:
-      redis:
+      relayer-redis:
         condition: service_healthy
     env_file:
       - infra/relayer/.env
@@ -88,6 +88,27 @@ services:
     # permanently and report the service as unhealthy while it is working fine. Readiness
     # is checked from the host instead, against /api/v1/relayers.
 
+  # The relayer gets its OWN Redis, not a database index on the API's.
+  #
+  # It stores its transaction queues as Redis Streams with consumer groups. Sharing an
+  # instance meant a routine `FLUSHALL` during development silently destroyed those groups:
+  # the workers then read nothing, and every submitted transaction stayed "pending" forever
+  # with no error anywhere except a stream of "consumer not registered" in the relayer log.
+  # A queue that fails silently is worth a container of its own.
+  relayer-redis:
+    image: redis:7-alpine
+    container_name: trustchain-relayer-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - relayer-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres-data:
   redis-data:
+  relayer-redis-data:

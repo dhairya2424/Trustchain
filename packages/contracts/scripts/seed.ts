@@ -139,6 +139,34 @@ async function main(): Promise<void> {
       ["auditor", auditor!.address, PERM_VIEW_AUDIT],
       ["admin", admin.address, PERM_VIEW_AUDIT],
     );
+
+    /*
+     * The relayer signs here too.
+     *
+     * On the local chain the relayer's signer is not one of Hardhat's genesis accounts, so
+     * it starts with no balance and no roles. Without both it can neither pay for a
+     * transaction nor pass the contract's permission check, and the fallback would look
+     * configured while being unable to do anything. Funding and granting here keeps the
+     * fallback a genuine equal in capability, differing from Amoy only in verifiability.
+     */
+    const localRelayer = process.env.RELAYER_ADDRESS;
+    if (localRelayer && ethers.isAddress(localRelayer)) {
+      const balance = await ethers.provider.getBalance(localRelayer);
+      if (balance < ethers.parseEther("1")) {
+        await (
+          await admin.sendTransaction({ to: localRelayer, value: ethers.parseEther("10") })
+        ).wait();
+        console.log(`  funded relayer ${localRelayer}`);
+      }
+
+      await ensure("relayer", localRelayer, MANAGER_ROLE);
+      checks.push(
+        ["relayer", localRelayer, PERM_MINT_ASSET],
+        ["relayer", localRelayer, PERM_ISSUE_CREDENTIAL],
+      );
+    } else {
+      console.log("  RELAYER_ADDRESS not set - the relayer cannot sign locally");
+    }
   } else {
     const relayerAddress = process.env.RELAYER_ADDRESS;
     if (!relayerAddress || !ethers.isAddress(relayerAddress)) {

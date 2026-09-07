@@ -11,7 +11,9 @@ import { stripMetadata } from "./metadata";
 import type { MalwareScanner } from "./malware";
 import type { IpfsPinner } from "./pinata";
 import { buildProvenance, ProvenanceError, type AssetEventSource } from "./provenance";
-import type { TransactionRelayer } from "./relayer";
+import type { ChainResolver } from "../chain/binding";
+import { explorerTxUrl } from "../chain/networks";
+import { toNetworkDto } from "../chain/routes";
 import { toAssetDto, type AssetRecord } from "./serializers";
 import { inspectUpload, MAX_UPLOAD_BYTES, safeDisplayName } from "./upload";
 
@@ -36,7 +38,13 @@ const mintFields = z
 export interface AssetDependencies {
   scanner: MalwareScanner;
   pinner: IpfsPinner;
-  relayer: TransactionRelayer;
+  /**
+   * Resolves the network and the relayer that submits to it, as one object.
+   *
+   * Not a bare relayer: the response has to name the network the transaction actually went
+   * to, and taking them together makes it impossible to report one while using the other.
+   */
+  chain: ChainResolver;
   events: AssetEventSource;
   assets: { find(tokenId: number): Promise<AssetRecord | null> };
   logger: Logger;
@@ -177,7 +185,11 @@ export function createAssetRouter(deps: AssetDependencies): Router {
       );
 
       // 5 — the relayer signs. This process holds no key.
-      const relayed = await deps.relayer.relayMint({
+      //
+      // The binding is resolved here, immediately before submitting, and the same object
+      // supplies both the relayer and the network named in the response below.
+      const chain = await deps.chain.active();
+      const relayed = await chain.relayer.relayMint({
         toDID: fields.data.toDID,
         tokenURI: pinnedMetadata.uri,
         soulbound: fields.data.soulbound,
@@ -192,6 +204,7 @@ export function createAssetRouter(deps: AssetDependencies): Router {
         cid: pinnedMetadata.cid,
         metadataStripped: stripped.removed,
         transactionId: relayed.transactionId,
+        network: chain.network.id,
       });
 
       res.status(202).json({
@@ -200,6 +213,9 @@ export function createAssetRouter(deps: AssetDependencies): Router {
         tokenURI: pinnedMetadata.uri,
         imageUri: pinnedFile.uri,
         gatewayUrl: pinnedMetadata.gatewayUrl,
+        // Which chain this actually went to, and where a third party can check it.
+        network: toNetworkDto(chain.network),
+        explorerUrl: relayed.hash ? explorerTxUrl(chain.network, relayed.hash) : null,
       });
     }),
   );
