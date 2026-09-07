@@ -22,7 +22,18 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().max(65535).default(4000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
-  CORS_ORIGIN: z.string().url(),
+  // One or more browser origins, comma separated. Every entry is validated as a URL so a
+  // typo fails at boot rather than at the first cross-origin request, when it would look
+  // like a frontend bug.
+  CORS_ORIGIN: z.string().refine(
+    (value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .every((entry) => URL.canParse(entry)),
+    "must be a comma-separated list of absolute origins, e.g. https://app.example.com",
+  ),
 
   DATABASE_URL: z.string().url().startsWith("postgres"),
   REDIS_URL: z.string().url().startsWith("redis"),

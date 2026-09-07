@@ -10,6 +10,7 @@ import { createCredentialRouter, type CredentialDependencies } from "./credentia
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
 import { ConsoleLogger, type Logger } from "./http/logger";
 import { errorHandler, requestId, sanitizeInput, validate } from "./http/middleware";
+import { corsMiddleware } from "./http/cors";
 import { requireHttps, sanitizeResponses, securityHeaders } from "./http/securityHeaders";
 
 export interface SecurityOptions {
@@ -29,6 +30,13 @@ export interface ServerOptions {
   credentials?: CredentialDependencies;
   logger?: Logger;
   security?: SecurityOptions;
+  /**
+   * Origins allowed to call this API from a browser.
+   *
+   * Absent means no cross-origin access, which is correct for an API with no browser
+   * client. It is never a reason to reflect whatever Origin arrived.
+   */
+  allowedOrigins?: readonly string[];
   /**
    * Per-request access logging, injected rather than constructed.
    *
@@ -56,6 +64,13 @@ export function createServer(options: ServerOptions = {}): Express {
   app.use(...securityHeaders({ ...(security.hsts !== undefined ? { hsts: security.hsts } : {}) }));
 
   app.use(requestId());
+
+  // Before the rest of the stack: a preflight carries no cookies, no body and no session,
+  // and answering it early keeps an OPTIONS request from paying for parsing and logging it
+  // has no use for. After requestId so a refusal is still traceable.
+  if (options.allowedOrigins?.length) {
+    app.use(corsMiddleware({ allowedOrigins: options.allowedOrigins, logger }));
+  }
 
   if (security.requireHttps) {
     app.use(requireHttps({ enabled: true, logger }));

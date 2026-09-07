@@ -30,6 +30,7 @@ import {
 import type { CredentialDependencies } from "./credentials/routes";
 import { LocalPinner } from "./dev/localPinner";
 import type { CallerResolver } from "./http/authorize";
+import { parseAllowedOrigins } from "./http/cors";
 import type { Logger } from "./http/logger";
 
 interface Platform {
@@ -309,6 +310,7 @@ function main(): void {
   const app = createServer({
     auth,
     logger,
+    allowedOrigins: parseAllowedOrigins(env.CORS_ORIGIN),
     ...(selector ? { audit: buildAudit(env, selector, logger, resolveCaller) } : {}),
     ...(credentials ? { credentials } : {}),
     ...(assets ? { assets } : {}),

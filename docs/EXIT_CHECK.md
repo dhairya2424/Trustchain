@@ -41,18 +41,19 @@ gate.
 
 ## 2. What the check covers
 
-| Section                      | What it proves                                                                                                                                     |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1. Authentication            | nonce → SIWE signature → Turnstile → cookie session; roles come from the chain; the seeded DID binds to the session                                |
-| 2. Auth refusals             | a replayed nonce is refused; a signature not matching the claimed address is refused; a missing Turnstile token is a 403                           |
-| 3. Audit authorization       | anonymous is 401; a USER without `PERM_VIEW_AUDIT` is 403; a USER cannot export                                                                    |
-| 4. Mint                      | a MANAGER mints through the API and the transaction is mined; **a USER cannot mint**                                                               |
-| 5. Audit shows the mint      | `ASSET_MINTED` appears, attributed to the initiating account, with `via` distinct from `actor`; filtering works; an unknown action name is refused |
-| 6. Credentials               | issue → verify → revoke → verify; the pinned envelope is checked on disk for claim text; a USER cannot issue                                       |
-| 7. Audit shows the lifecycle | `CREDENTIAL_ISSUED`, `CREDENTIAL_REVOKED`, `ASSET_MINTED`, `DID_REGISTERED` all present                                                            |
-| 8. CSV export                | ADMIN only; correct headers; every field quoted                                                                                                    |
-| 9. Security headers          | CSP, nosniff, frame-ancestors, referrer policy, no `X-Powered-By`, request id echoed                                                               |
-| 10. Rate limiting            | a burst of logins is eventually refused with `Retry-After`                                                                                         |
+| Section                      | What it proves                                                                                                                                       |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Authentication            | nonce → SIWE signature → Turnstile → cookie session; roles come from the chain; the seeded DID binds to the session                                  |
+| 2. Auth refusals             | a replayed nonce is refused; a signature not matching the claimed address is refused; a missing Turnstile token is a 403                             |
+| 3. Audit authorization       | anonymous is 401; a USER without `PERM_VIEW_AUDIT` is 403; a USER cannot export                                                                      |
+| 4. Mint                      | a MANAGER mints through the API and the transaction is mined; **a USER cannot mint**                                                                 |
+| 5. Audit shows the mint      | `ASSET_MINTED` appears, attributed to the initiating account, with `via` distinct from `actor`; filtering works; an unknown action name is refused   |
+| 6. Credentials               | issue → verify → revoke → verify; the pinned envelope is checked on disk for claim text; a USER cannot issue                                         |
+| 7. Audit shows the lifecycle | `CREDENTIAL_ISSUED`, `CREDENTIAL_REVOKED`, `ASSET_MINTED`, `DID_REGISTERED` all present                                                              |
+| 8. CSV export                | ADMIN only; correct headers; every field quoted                                                                                                      |
+| 9. Security headers          | CSP, nosniff, frame-ancestors, referrer policy, no `X-Powered-By`, request id echoed                                                                 |
+| 10. CORS                     | the app origin is admitted with credentials; an unlisted origin and a look-alike suffix origin get no header; a request with no `Origin` still works |
+| 11. Rate limiting            | a burst of logins is eventually refused with `Retry-After`                                                                                           |
 
 The audit read reports `source: "chain"` throughout, because no subgraph runs locally —
 so the run exercises the `getLogs` fallback rather than the fast path. That is the half

@@ -714,8 +714,87 @@ async function main() {
   check("X-Powered-By is absent", headers.get("x-powered-by") === null);
   check("a request id is echoed", Boolean(headers.get("x-request-id")));
 
+  // ---------------------------------------------------------------- cors
+  section("10. CORS lets the app in and keeps everyone else out");
+
+  /*
+   * The browser boundary, checked over real HTTP because that is the only place it exists:
+   * CORS is enforced by the browser against headers the server sends, so a unit test can
+   * only assert the headers and this asserts the server actually emits them in production
+   * shape. Uses /health, which is outside the /auth rate limiter exercised below.
+   */
+  const preflight = await call("OPTIONS", "/health", {
+    headers: {
+      origin: ORIGIN,
+      "access-control-request-method": "GET",
+      "access-control-request-headers": "content-type",
+    },
+  });
+
+  check("a preflight from the app origin is answered 204", preflight.status === 204);
+  check(
+    "the response names the app origin rather than a wildcard",
+    preflight.headers.get("access-control-allow-origin") === ORIGIN,
+  );
+  check(
+    "credentials are allowed, without which the session cookie never travels",
+    preflight.headers.get("access-control-allow-credentials") === "true",
+  );
+  check(
+    "the app may send content-type",
+    String(preflight.headers.get("access-control-allow-headers")).includes("content-type"),
+  );
+  check(
+    "the app may not send Authorization, keeping the cookie the only session path",
+    !String(preflight.headers.get("access-control-allow-headers"))
+      .toLowerCase()
+      .includes("authorization"),
+  );
+  check(
+    "the client can read the request id back",
+    String(preflight.headers.get("access-control-expose-headers")).includes("x-request-id"),
+  );
+  check(
+    "preflights are cached, so every mutation does not cost two round trips",
+    Number(preflight.headers.get("access-control-max-age")) > 0,
+  );
+
+  const allowed = await call("GET", "/health", { headers: { origin: ORIGIN } });
+  check(
+    "a real request from the app origin carries the header",
+    allowed.headers.get("access-control-allow-origin") === ORIGIN,
+  );
+  check(
+    "Vary: Origin is set, so a cache cannot leak one origin's approval to another",
+    String(allowed.headers.get("vary")).toLowerCase().includes("origin"),
+  );
+
+  const hostile = await call("GET", "/health", { headers: { origin: "https://evil.test" } });
+  check(
+    "an unlisted origin gets no CORS header at all",
+    hostile.headers.get("access-control-allow-origin") === null,
+  );
+  check(
+    "and is refused rather than erroring, so refusals do not read as outages",
+    hostile.status === 200,
+  );
+
+  const lookalike = await call("GET", "/health", {
+    headers: { origin: `${ORIGIN}.evil.test` },
+  });
+  check(
+    "an origin that merely ends with an allowed one is refused",
+    lookalike.headers.get("access-control-allow-origin") === null,
+  );
+
+  const noOrigin = await call("GET", "/health");
+  check(
+    "a request with no Origin still works, because CORS is a browser mechanism",
+    noOrigin.status === 200,
+  );
+
   // ---------------------------------------------------------------- rate limit
-  section("10. Login rate limiting still fires");
+  section("11. Login rate limiting still fires");
 
   /*
    * The local .env raises AUTH_RATE_LIMIT_POINTS so this script's own breadth does not
