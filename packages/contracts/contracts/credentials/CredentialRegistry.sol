@@ -11,6 +11,8 @@ import {IRoleAccessControl} from "../interfaces/IRoleAccessControl.sol";
 import {ActionCodes} from "../libraries/ActionCodes.sol";
 import {Permissions} from "../libraries/Permissions.sol";
 import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
+import {ERC2771ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/metatx/ERC2771ContextUpgradeable.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
 /**
  * @title CredentialRegistry
@@ -30,7 +32,12 @@ import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
  *      PERM_ISSUE_CREDENTIAL and revoking needs PERM_REVOKE_CREDENTIAL, both held by
  *      ADMIN and MANAGER in the default matrix.
  */
-contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeable {
+contract CredentialRegistry is
+    Initializable,
+    PausableUpgradeable,
+    ERC2771ContextUpgradeable,
+    UUPSUpgradeable
+{
     enum CredentialStatus {
         Unknown,
         Valid,
@@ -90,7 +97,7 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
     error DIDNotActive(bytes32 didHash);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address trustedForwarder) ERC2771ContextUpgradeable(trustedForwarder) {
         _disableInitializers();
     }
 
@@ -104,15 +111,15 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
     }
 
     modifier onlyPermission(bytes32 permission) {
-        if (!accessControl.hasPermission(msg.sender, permission)) {
-            revert NotPermitted(msg.sender, permission);
+        if (!accessControl.hasPermission(_msgSender(), permission)) {
+            revert NotPermitted(_msgSender(), permission);
         }
         _;
     }
 
     modifier onlyAdmin() {
-        if (!accessControl.hasRole(TrustChainRoles.ADMIN_ROLE, msg.sender)) {
-            revert NotAdmin(msg.sender);
+        if (!accessControl.hasRole(TrustChainRoles.ADMIN_ROLE, _msgSender())) {
+            revert NotAdmin(_msgSender());
         }
         _;
     }
@@ -151,7 +158,7 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
         _credentials[credentialHash] = Credential({
             didHash: didHash,
             schemaId: schemaId,
-            issuer: msg.sender,
+            issuer: _msgSender(),
             issuedAt: issuedAt,
             expiresAt: expiresAt,
             revokedAt: 0,
@@ -160,7 +167,7 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
         });
         _issuedCount[didHash] += 1;
 
-        emit CredentialIssued(credentialHash, didHash, schemaId, msg.sender, issuedAt, expiresAt);
+        emit CredentialIssued(credentialHash, didHash, schemaId, _msgSender(), issuedAt, expiresAt);
         _audit(didHash, ActionCodes.CREDENTIAL_ISSUED, credentialHash);
     }
 
@@ -186,7 +193,7 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
             credentialHash,
             credential.didHash,
             reasonCode,
-            msg.sender,
+            _msgSender(),
             credential.revokedAt
         );
         _audit(credential.didHash, ActionCodes.CREDENTIAL_REVOKED, credentialHash);
@@ -262,10 +269,50 @@ contract CredentialRegistry is Initializable, PausableUpgradeable, UUPSUpgradeab
         // The entry id is informational. What matters is that a refused write reverts,
         // which propagates from this call.
         // slither-disable-next-line unused-return
-        auditTrail.logAction(didHash, actionCode, refHash);
+        auditTrail.logAction(didHash, actionCode, refHash, _msgSender());
     }
 
     function _authorizeUpgrade(address newImplementation) internal view override onlyAdmin {
         if (newImplementation == address(0)) revert ZeroAddress();
+    }
+
+    // ---------------------------------------------------------------------
+    // ERC-2771 context
+    // ---------------------------------------------------------------------
+
+    /**
+     * @dev Resolves the request's originator.
+     *
+     * When the call arrives through the trusted forwarder this is the address that SIGNED
+     * the request; otherwise it is `msg.sender` unchanged, so direct calls behave exactly
+     * as before. Every authorization check and every audit entry in this contract reads
+     * from here, which is what makes them attribute to the requester rather than to the
+     * relayer that paid for gas.
+     */
+    function _msgSender()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (address)
+    {
+        return ERC2771ContextUpgradeable._msgSender();
+    }
+
+    function _msgData()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (bytes calldata)
+    {
+        return ERC2771ContextUpgradeable._msgData();
+    }
+
+    function _contextSuffixLength()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (uint256)
+    {
+        return ERC2771ContextUpgradeable._contextSuffixLength();
     }
 }

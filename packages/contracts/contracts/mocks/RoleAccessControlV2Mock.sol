@@ -8,7 +8,7 @@ contract RoleAccessControlV2Mock is RoleAccessControl {
     event UpgradedToV2();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() RoleAccessControl() {}
+    constructor(address trustedForwarder) RoleAccessControl(trustedForwarder) {}
 
     function initializeV2() external reinitializer(2) {
         emit UpgradedToV2();

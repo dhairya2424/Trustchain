@@ -16,6 +16,7 @@ import {
 const DID = `0x${"1".repeat(64)}`;
 const TX = `0x${"3".repeat(64)}`;
 const ACTOR = "0x2222222222222222222222222222222222222222";
+const RELAYER = "0x5555555555555555555555555555555555555555";
 
 function event(overrides: Partial<RawAuditEvent> = {}): RawAuditEvent {
   return {
@@ -25,6 +26,7 @@ function event(overrides: Partial<RawAuditEvent> = {}): RawAuditEvent {
     refHash: `0x${"2".repeat(64)}`,
     via: "0x1111111111111111111111111111111111111111",
     actor: ACTOR,
+    executor: "0x4444444444444444444444444444444444444444",
     blockNumber: 100,
     logIndex: 0,
     transactionHash: TX,
@@ -41,6 +43,7 @@ function subgraphRow(overrides: Record<string, unknown> = {}) {
     refHash: `0x${"2".repeat(64)}`,
     via: "0x1111111111111111111111111111111111111111",
     actor: ACTOR,
+    executor: "0x4444444444444444444444444444444444444444",
     blockNumber: "100",
     logIndex: "0",
     transactionHash: TX,
@@ -189,6 +192,7 @@ describe("OnChainAuditSource", () => {
       entryId: 5n,
       didHash: DID,
       actionCode: 11,
+      actor: ACTOR,
       refHash: `0x${"2".repeat(64)}`,
       caller: "0x1111111111111111111111111111111111111111",
       timestamp: 1_760_000_000n,
@@ -203,11 +207,18 @@ describe("OnChainAuditSource", () => {
     ({
       getBlockNumber: async () => 1000n,
       getLogs: async () => [log()],
-      getTransaction: async () => ({ from: ACTOR }),
+      getTransaction: async () => ({ from: RELAYER }),
       ...overrides,
     }) as unknown as PublicClient;
 
-  it("reads entries from logs and attributes the transaction sender as the actor", async () => {
+  /**
+   * The actor now comes from the EVENT, not from the transaction sender.
+   *
+   * Before ERC-2771 the sender was the best available guess, which meant every entry was
+   * attributed to the relayer. The event carries the proven requester, and the sender is
+   * reported separately as the executor.
+   */
+  it("takes the actor from the event and the executor from the transaction", async () => {
     const source = new OnChainAuditSource({
       client: client(),
       address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -217,13 +228,16 @@ describe("OnChainAuditSource", () => {
     const [entry] = await source.query({ limit: 10 });
 
     expect(entry?.entryId).toBe(5);
+    // Proven on-chain, independent of who submitted.
     expect(entry?.actor).toBe(ACTOR);
-    // `via` is the system contract, and must not be confused with the actor.
+    // The relayer that paid for the transaction.
+    expect(entry?.executor).toBe(RELAYER);
+    // The system contract that wrote the row — a third, distinct party.
     expect(entry?.via).toBe("0x1111111111111111111111111111111111111111");
   });
 
   it("fetches each transaction once even when several entries share it", async () => {
-    const getTransaction = vi.fn(async () => ({ from: ACTOR }));
+    const getTransaction = vi.fn(async () => ({ from: RELAYER }));
     const source = new OnChainAuditSource({
       client: client({
         getLogs: async () => [
@@ -242,7 +256,7 @@ describe("OnChainAuditSource", () => {
     expect(getTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it("reports a null actor when the sender cannot be resolved, rather than guessing", async () => {
+  it("reports a null executor when the sender cannot be resolved, rather than guessing", async () => {
     const source = new OnChainAuditSource({
       client: client({
         getTransaction: async () => {
@@ -255,7 +269,9 @@ describe("OnChainAuditSource", () => {
 
     const [entry] = await source.query({ limit: 10 });
 
-    expect(entry?.actor).toBeNull();
+    // The actor still comes from the event, so attribution survives an unresolvable sender.
+    expect(entry?.executor).toBeNull();
+    expect(entry?.actor).toBe(ACTOR);
   });
 
   it("never scans below the deployment block", async () => {

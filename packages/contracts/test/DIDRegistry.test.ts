@@ -5,6 +5,28 @@ import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import type { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import type { DIDRegistry } from "../typechain-types";
 
+/**
+ * Deployment options for an ERC-2771 aware implementation.
+ *
+ * Constructor arguments are normally unsafe in an upgradeable contract. They are safe here
+ * because the forwarder address is immutable — which is the property that stops actor
+ * attribution from being swappable after deployment.
+ */
+const proxyOptionsFor = (forwarder: string) =>
+  ({
+    kind: "uups" as const,
+    constructorArgs: [forwarder],
+    unsafeAllow: ["constructor", "state-variable-immutable"],
+  }) as never;
+
+async function deployForwarder(): Promise<string> {
+  const forwarder = await (
+    await ethers.getContractFactory("TrustChainForwarder")
+  ).deploy("TrustChainForwarder");
+  await forwarder.waitForDeployment();
+  return forwarder.getAddress();
+}
+
 const ZERO_ADDRESS = ethers.ZeroAddress;
 const ZERO_BYTES32 = ethers.ZeroHash;
 
@@ -25,18 +47,21 @@ const ROTATION_TYPES = {
 } as const;
 
 async function deployFixture() {
+  const forwarderAddress = await deployForwarder();
   const [admin, alice, bob, carol, relayer] = await ethers.getSigners();
   if (!admin || !alice || !bob || !carol || !relayer) {
     throw new Error("expected at least five funded signers");
   }
 
   const factory = await ethers.getContractFactory("DIDRegistry");
-  const registry = (await upgrades.deployProxy(factory, [admin.address], {
-    kind: "uups",
-  })) as unknown as DIDRegistry;
+  const registry = (await upgrades.deployProxy(
+    factory,
+    [admin.address],
+    proxyOptionsFor(await deployForwarder()),
+  )) as unknown as DIDRegistry;
   await registry.waitForDeployment();
 
-  return { registry, admin, alice, bob, carol, relayer };
+  return { forwarderAddress, registry, admin, alice, bob, carol, relayer };
 }
 
 async function signRotation(
@@ -83,7 +108,7 @@ describe("DIDRegistry", () => {
       const factory = await ethers.getContractFactory("DIDRegistry");
 
       await expect(
-        upgrades.deployProxy(factory, [ZERO_ADDRESS], { kind: "uups" }),
+        upgrades.deployProxy(factory, [ZERO_ADDRESS], proxyOptionsFor(await deployForwarder())),
       ).to.be.revertedWithCustomError(factory, "ZeroAddress");
     });
 
@@ -553,7 +578,7 @@ describe("DIDRegistry", () => {
 
   describe("upgradeability", () => {
     it("preserves state across an authorised upgrade", async () => {
-      const { registry, alice } = await loadFixture(deployFixture);
+      const { forwarderAddress, registry, alice } = await loadFixture(deployFixture);
       await registry.connect(alice).registerDID(ALICE_DID, ALICE_KEY);
 
       const v2Factory = await ethers.getContractFactory("DIDRegistryV2Mock");
@@ -562,7 +587,11 @@ describe("DIDRegistry", () => {
       // validator's heuristic looks for. State migration goes in initializeV2.
       const upgraded = await upgrades.upgradeProxy(await registry.getAddress(), v2Factory, {
         call: { fn: "initializeV2", args: [] },
-        unsafeAllow: ["missing-initializer"],
+        // The V2 implementation takes the same immutable forwarder as V1, so the upgrade
+        // must supply it too — an upgrade that dropped it would silently deploy an
+        // implementation with no trusted forwarder and break actor attribution.
+        constructorArgs: [forwarderAddress],
+        unsafeAllow: ["missing-initializer", "constructor", "state-variable-immutable"],
       });
 
       expect(await upgraded.version()).to.equal("2.0.0");
@@ -579,10 +608,10 @@ describe("DIDRegistry", () => {
     });
 
     it("refuses an upgrade from an account without DEFAULT_ADMIN_ROLE", async () => {
-      const { registry, alice } = await loadFixture(deployFixture);
+      const { forwarderAddress, registry, alice } = await loadFixture(deployFixture);
 
       const v2Factory = await ethers.getContractFactory("DIDRegistryV2Mock");
-      const v2 = await v2Factory.deploy();
+      const v2 = await v2Factory.deploy(forwarderAddress);
       await v2.waitForDeployment();
 
       await expect(

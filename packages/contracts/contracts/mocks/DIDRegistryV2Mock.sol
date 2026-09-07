@@ -8,7 +8,7 @@ contract DIDRegistryV2Mock is DIDRegistry {
     event UpgradedToV2();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() DIDRegistry() {}
+    constructor(address trustedForwarder) DIDRegistry(trustedForwarder) {}
 
     /// @notice Migration hook for the V2 upgrade. Version 1 state carries over untouched.
     function initializeV2() external reinitializer(2) {

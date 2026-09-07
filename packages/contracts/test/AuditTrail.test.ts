@@ -4,6 +4,37 @@ import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import type { AuditTrail, RoleAccessControl } from "../typechain-types";
 
+/**
+ * Deployment options for an ERC-2771 aware implementation.
+ *
+ * Constructor arguments are normally unsafe in an upgradeable contract. They are safe here
+ * because the forwarder address is immutable — which is the property that stops actor
+ * attribution from being swappable after deployment.
+ */
+const proxyOptionsFor = (forwarder: string) =>
+  ({
+    kind: "uups" as const,
+    constructorArgs: [forwarder],
+    unsafeAllow: ["constructor", "state-variable-immutable"],
+  }) as never;
+
+/**
+ * A stand-in requester for direct logAction calls.
+ *
+ * These tests exercise the allowlist and the append-only shape, not attribution, so
+ * any non-zero address serves. That the trail REFUSES a zero actor is covered
+ * separately.
+ */
+const ACTOR_ADDRESS = "0x00000000000000000000000000000000000000A1";
+
+async function deployForwarder(): Promise<string> {
+  const forwarder = await (
+    await ethers.getContractFactory("TrustChainForwarder")
+  ).deploy("TrustChainForwarder");
+  await forwarder.waitForDeployment();
+  return forwarder.getAddress();
+}
+
 const ZERO_ADDRESS = ethers.ZeroAddress;
 const ADMIN_TRANSFER_DELAY = 3n * 24n * 60n * 60n;
 
@@ -16,15 +47,18 @@ const REF = id("ref");
 const ACTION_CREDENTIAL_ISSUED = 11;
 
 async function deployFixture() {
+  const forwarderAddress = await deployForwarder();
   const [owner, sibling, otherSibling, manager, outsider] = await ethers.getSigners();
   if (!owner || !sibling || !otherSibling || !manager || !outsider) {
     throw new Error("expected at least five funded signers");
   }
 
   const aclFactory = await ethers.getContractFactory("RoleAccessControl");
-  const acl = (await upgrades.deployProxy(aclFactory, [owner.address, ADMIN_TRANSFER_DELAY], {
-    kind: "uups",
-  })) as unknown as RoleAccessControl;
+  const acl = (await upgrades.deployProxy(
+    aclFactory,
+    [owner.address, ADMIN_TRANSFER_DELAY],
+    proxyOptionsFor(forwarderAddress),
+  )) as unknown as RoleAccessControl;
   await acl.waitForDeployment();
 
   const trailFactory = await ethers.getContractFactory("AuditTrail");
@@ -33,7 +67,7 @@ async function deployFixture() {
 
   await acl.connect(owner).grantRole(MANAGER_ROLE, manager.address);
 
-  return { acl, trail, owner, sibling, otherSibling, manager, outsider };
+  return { forwarderAddress, acl, trail, owner, sibling, otherSibling, manager, outsider };
 }
 
 describe("AuditTrail", () => {
@@ -71,7 +105,9 @@ describe("AuditTrail", () => {
 
       // Not even an ADMIN or MANAGER may write directly: only sibling contracts.
       for (const caller of [outsider, manager, owner]) {
-        await expect(trail.connect(caller).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF))
+        await expect(
+          trail.connect(caller).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF, ACTOR_ADDRESS),
+        )
           .to.be.revertedWithCustomError(trail, "NotTrustedCaller")
           .withArgs(caller.address);
       }
@@ -101,13 +137,15 @@ describe("AuditTrail", () => {
       const { trail, owner, sibling } = await loadFixture(deployFixture);
 
       await trail.connect(owner).setTrustedCaller(sibling.address, true);
-      await trail.connect(sibling).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF);
+      await trail
+        .connect(sibling)
+        .logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF, ACTOR_ADDRESS);
       expect(await trail.entryCount()).to.equal(1n);
 
       await trail.connect(owner).setTrustedCaller(sibling.address, false);
 
       await expect(
-        trail.connect(sibling).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF),
+        trail.connect(sibling).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF, ACTOR_ADDRESS),
       ).to.be.revertedWithCustomError(trail, "NotTrustedCaller");
 
       // The entry already written is untouched.
@@ -120,9 +158,19 @@ describe("AuditTrail", () => {
       const { trail, owner, sibling } = await loadFixture(deployFixture);
       await trail.connect(owner).setTrustedCaller(sibling.address, true);
 
-      await expect(trail.connect(sibling).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF))
+      await expect(
+        trail.connect(sibling).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF, ACTOR_ADDRESS),
+      )
         .to.emit(trail, "ActionLogged")
-        .withArgs(0n, ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF, sibling.address, anyValue);
+        .withArgs(
+          0n,
+          ALICE_DID,
+          ACTION_CREDENTIAL_ISSUED,
+          ACTOR_ADDRESS,
+          REF,
+          sibling.address,
+          anyValue,
+        );
 
       const entry = await trail.entryAt(0n);
       expect(entry.didHash).to.equal(ALICE_DID);
@@ -131,6 +179,11 @@ describe("AuditTrail", () => {
       expect(entry.actionCode).to.equal(ACTION_CREDENTIAL_ISSUED);
       expect(entry.timestamp).to.be.greaterThan(0n);
       expect(entry.blockNumber).to.be.greaterThan(0n);
+
+      // The field the whole change exists for: who asked, kept apart from which contract
+      // wrote the row and from whichever account paid for the gas.
+      expect(entry.actor).to.equal(ACTOR_ADDRESS);
+      expect(entry.actor).to.not.equal(entry.caller);
     });
 
     it("assigns strictly increasing ids across callers", async () => {
@@ -140,7 +193,9 @@ describe("AuditTrail", () => {
 
       for (let i = 0; i < 5; i++) {
         const writer = i % 2 === 0 ? sibling : otherSibling;
-        await trail.connect(writer).logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF);
+        await trail
+          .connect(writer)
+          .logAction(ALICE_DID, ACTION_CREDENTIAL_ISSUED, REF, ACTOR_ADDRESS);
         expect(await trail.entryCount()).to.equal(BigInt(i + 1));
       }
 
@@ -154,7 +209,7 @@ describe("AuditTrail", () => {
       const { trail, owner, sibling } = await loadFixture(deployFixture);
       await trail.connect(owner).setTrustedCaller(sibling.address, true);
 
-      await trail.connect(sibling).logAction(ethers.ZeroHash, 7, REF);
+      await trail.connect(sibling).logAction(ethers.ZeroHash, 7, REF, ACTOR_ADDRESS);
       expect((await trail.entryAt(0n)).didHash).to.equal(ethers.ZeroHash);
     });
   });
@@ -165,7 +220,7 @@ describe("AuditTrail", () => {
       await trail.connect(owner).setTrustedCaller(sibling.address, true);
 
       for (let i = 0; i < 6; i++) {
-        await trail.connect(sibling).logAction(ALICE_DID, i + 1, REF);
+        await trail.connect(sibling).logAction(ALICE_DID, i + 1, REF, ACTOR_ADDRESS);
       }
 
       const firstPage = await trail.entriesInRange(0n, 4n);

@@ -9,6 +9,28 @@ import type {
   RoleAccessControl,
 } from "../typechain-types";
 
+/**
+ * Deployment options for an ERC-2771 aware implementation.
+ *
+ * Constructor arguments are normally unsafe in an upgradeable contract. They are safe here
+ * because the forwarder address is immutable — which is the property that stops actor
+ * attribution from being swappable after deployment.
+ */
+const proxyOptionsFor = (forwarder: string) =>
+  ({
+    kind: "uups" as const,
+    constructorArgs: [forwarder],
+    unsafeAllow: ["constructor", "state-variable-immutable"],
+  }) as never;
+
+async function deployForwarder(): Promise<string> {
+  const forwarder = await (
+    await ethers.getContractFactory("TrustChainForwarder")
+  ).deploy("TrustChainForwarder");
+  await forwarder.waitForDeployment();
+  return forwarder.getAddress();
+}
+
 const ZERO_ADDRESS = ethers.ZeroAddress;
 const ZERO_BYTES32 = ethers.ZeroHash;
 const ADMIN_TRANSFER_DELAY = 3n * 24n * 60n * 60n;
@@ -39,28 +61,33 @@ const ACTION_CREDENTIAL_ISSUED = 11;
 const ACTION_CREDENTIAL_REVOKED = 12;
 
 async function deployFixture() {
+  const forwarderAddress = await deployForwarder();
   const [owner, manager, alice, auditor, outsider] = await ethers.getSigners();
   if (!owner || !manager || !alice || !auditor || !outsider) {
     throw new Error("expected at least five funded signers");
   }
 
   const aclFactory = await ethers.getContractFactory("RoleAccessControl");
-  const acl = (await upgrades.deployProxy(aclFactory, [owner.address, ADMIN_TRANSFER_DELAY], {
-    kind: "uups",
-  })) as unknown as RoleAccessControl;
+  const acl = (await upgrades.deployProxy(
+    aclFactory,
+    [owner.address, ADMIN_TRANSFER_DELAY],
+    proxyOptionsFor(forwarderAddress),
+  )) as unknown as RoleAccessControl;
   await acl.waitForDeployment();
 
   const didFactory = await ethers.getContractFactory("DIDRegistry");
-  const did = (await upgrades.deployProxy(didFactory, [owner.address], {
-    kind: "uups",
-  })) as unknown as DIDRegistry;
+  const did = (await upgrades.deployProxy(
+    didFactory,
+    [owner.address],
+    proxyOptionsFor(forwarderAddress),
+  )) as unknown as DIDRegistry;
   await did.waitForDeployment();
 
   const credFactory = await ethers.getContractFactory("CredentialRegistry");
   const credentials = (await upgrades.deployProxy(
     credFactory,
     [await acl.getAddress(), await did.getAddress()],
-    { kind: "uups" },
+    proxyOptionsFor(forwarderAddress),
   )) as unknown as CredentialRegistry;
   await credentials.waitForDeployment();
 
@@ -74,7 +101,18 @@ async function deployFixture() {
 
   await did.connect(alice).registerDID(ALICE_DID, KEY);
 
-  return { acl, did, credentials, trail, owner, manager, alice, auditor, outsider };
+  return {
+    forwarderAddress,
+    acl,
+    did,
+    credentials,
+    trail,
+    owner,
+    manager,
+    alice,
+    auditor,
+    outsider,
+  };
 }
 
 async function wireAuditTrail(fixture: Awaited<ReturnType<typeof deployFixture>>) {
@@ -350,19 +388,28 @@ describe("CredentialRegistry", () => {
     });
 
     it("rejects zero dependencies and refuses non-ADMIN upgrades", async () => {
-      const { acl, did, credentials, manager, owner } = await loadFixture(deployFixture);
+      const { forwarderAddress, acl, did, credentials, manager, owner } =
+        await loadFixture(deployFixture);
       const factory = await ethers.getContractFactory("CredentialRegistry");
 
       await expect(
-        upgrades.deployProxy(factory, [ZERO_ADDRESS, await did.getAddress()], { kind: "uups" }),
+        upgrades.deployProxy(
+          factory,
+          [ZERO_ADDRESS, await did.getAddress()],
+          proxyOptionsFor(forwarderAddress),
+        ),
       ).to.be.revertedWithCustomError(factory, "ZeroAddress");
 
       await expect(
-        upgrades.deployProxy(factory, [await acl.getAddress(), ZERO_ADDRESS], { kind: "uups" }),
+        upgrades.deployProxy(
+          factory,
+          [await acl.getAddress(), ZERO_ADDRESS],
+          proxyOptionsFor(forwarderAddress),
+        ),
       ).to.be.revertedWithCustomError(factory, "ZeroAddress");
 
       const v2Factory = await ethers.getContractFactory("CredentialRegistryV2Mock");
-      const v2 = await v2Factory.deploy();
+      const v2 = await v2Factory.deploy(forwarderAddress);
       await v2.waitForDeployment();
 
       await expect(
@@ -375,14 +422,18 @@ describe("CredentialRegistry", () => {
     });
 
     it("preserves credentials across an upgrade", async () => {
-      const { credentials, manager } = await loadFixture(deployFixture);
+      const { forwarderAddress, credentials, manager } = await loadFixture(deployFixture);
       await credentials.connect(manager).issue(VC_HASH, ALICE_DID, SCHEMA_KYC, 0);
       await credentials.connect(manager).revoke(VC_HASH, REASON_KEY_COMPROMISED);
 
       const v2Factory = await ethers.getContractFactory("CredentialRegistryV2Mock");
       const upgraded = await upgrades.upgradeProxy(await credentials.getAddress(), v2Factory, {
         call: { fn: "initializeV2", args: [] },
-        unsafeAllow: ["missing-initializer"],
+        // The V2 implementation takes the same immutable forwarder as V1, so the upgrade
+        // must supply it too — an upgrade that dropped it would silently deploy an
+        // implementation with no trusted forwarder and break actor attribution.
+        constructorArgs: [forwarderAddress],
+        unsafeAllow: ["missing-initializer", "constructor", "state-variable-immutable"],
       });
 
       expect(await upgraded.version()).to.equal("2.0.0");

@@ -8,7 +8,7 @@ contract CredentialRegistryV2Mock is CredentialRegistry {
     event UpgradedToV2();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() CredentialRegistry() {}
+    constructor(address trustedForwarder) CredentialRegistry(trustedForwarder) {}
 
     function initializeV2() external reinitializer(2) {
         emit UpgradedToV2();

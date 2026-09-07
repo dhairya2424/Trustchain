@@ -13,8 +13,15 @@ export interface AuditEntryDto {
   entryId: number;
   action: string;
   actionCode: number;
-  /** Initiating account, or null when the source could not attribute it. */
+  /**
+   * The identity that REQUESTED the action, proven on-chain through ERC-2771.
+   *
+   * Null only when the source could not supply it — which for a chain read means the entry
+   * predates actor attribution, not that the action was anonymous.
+   */
   actor: string | null;
+  /** The account that SUBMITTED the transaction — the relayer. */
+  executor: string | null;
   didHash: string;
   refHash: string;
   /** System contract that recorded the entry. */
@@ -30,6 +37,7 @@ export function toAuditEntryDto(event: RawAuditEvent): AuditEntryDto {
     action: actionName(event.actionCode),
     actionCode: event.actionCode,
     actor: event.actor,
+    executor: event.executor,
     didHash: event.didHash,
     refHash: event.refHash,
     via: event.via,

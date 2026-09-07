@@ -14,6 +14,8 @@ import {IRoleAccessControl} from "../interfaces/IRoleAccessControl.sol";
 import {ActionCodes} from "../libraries/ActionCodes.sol";
 import {Permissions} from "../libraries/Permissions.sol";
 import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
+import {ERC2771ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/metatx/ERC2771ContextUpgradeable.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
 /**
  * @title AssetRegistry
@@ -42,6 +44,7 @@ contract AssetRegistry is
     ERC721URIStorageUpgradeable,
     ERC721PausableUpgradeable,
     ReentrancyGuardTransient,
+    ERC2771ContextUpgradeable,
     UUPSUpgradeable
 {
     IRoleAccessControl public accessControl;
@@ -93,7 +96,7 @@ contract AssetRegistry is
     error EmptyTokenURI();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address trustedForwarder) ERC2771ContextUpgradeable(trustedForwarder) {
         _disableInitializers();
     }
 
@@ -117,15 +120,15 @@ contract AssetRegistry is
     }
 
     modifier onlyPermission(bytes32 permission) {
-        if (!accessControl.hasPermission(msg.sender, permission)) {
-            revert NotPermitted(msg.sender, permission);
+        if (!accessControl.hasPermission(_msgSender(), permission)) {
+            revert NotPermitted(_msgSender(), permission);
         }
         _;
     }
 
     modifier onlyAdmin() {
-        if (!accessControl.hasRole(TrustChainRoles.ADMIN_ROLE, msg.sender)) {
-            revert NotAdmin(msg.sender);
+        if (!accessControl.hasRole(TrustChainRoles.ADMIN_ROLE, _msgSender())) {
+            revert NotAdmin(_msgSender());
         }
         _;
     }
@@ -164,7 +167,7 @@ contract AssetRegistry is
         // token mid-mint would otherwise see it with an empty tokenURI.
         _safeMint(owner, tokenId);
 
-        emit AssetMinted(tokenId, toDID, owner, uri, soulbound, msg.sender);
+        emit AssetMinted(tokenId, toDID, owner, uri, soulbound, _msgSender());
         _audit(toDID, ActionCodes.ASSET_MINTED, bytes32(tokenId));
     }
 
@@ -183,7 +186,7 @@ contract AssetRegistry is
         _requireOwned(tokenId);
 
         address controller = didRegistry.controllerOf(didHash);
-        if (msg.sender != controller) revert NotDIDController(msg.sender, didHash);
+        if (_msgSender() != controller) revert NotDIDController(_msgSender(), didHash);
         if (!didRegistry.isActive(didHash)) revert DIDNotActive(didHash);
 
         address currentHolder = _ownerOf(tokenId);
@@ -290,7 +293,7 @@ contract AssetRegistry is
         // The entry id is informational. What matters is that a refused write reverts,
         // which propagates from this call.
         // slither-disable-next-line unused-return
-        auditTrail.logAction(didHash, actionCode, refHash);
+        auditTrail.logAction(didHash, actionCode, refHash, _msgSender());
     }
 
     function tokenURI(
@@ -307,5 +310,45 @@ contract AssetRegistry is
 
     function _authorizeUpgrade(address newImplementation) internal view override onlyAdmin {
         if (newImplementation == address(0)) revert ZeroAddress();
+    }
+
+    // ---------------------------------------------------------------------
+    // ERC-2771 context
+    // ---------------------------------------------------------------------
+
+    /**
+     * @dev Resolves the request's originator.
+     *
+     * When the call arrives through the trusted forwarder this is the address that SIGNED
+     * the request; otherwise it is `msg.sender` unchanged, so direct calls behave exactly
+     * as before. Every authorization check and every audit entry in this contract reads
+     * from here, which is what makes them attribute to the requester rather than to the
+     * relayer that paid for gas.
+     */
+    function _msgSender()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (address)
+    {
+        return ERC2771ContextUpgradeable._msgSender();
+    }
+
+    function _msgData()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (bytes calldata)
+    {
+        return ERC2771ContextUpgradeable._msgData();
+    }
+
+    function _contextSuffixLength()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (uint256)
+    {
+        return ERC2771ContextUpgradeable._contextSuffixLength();
     }
 }

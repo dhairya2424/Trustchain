@@ -6,12 +6,20 @@ import { ACTION_NAMES, type ActionName } from "./actions";
 /**
  * One entry from the on-chain audit trail.
  *
- * `via` and `actor` are two different things and conflating them would make the log
- * useless. The AuditTrail contract records `msg.sender`, which is always a sibling system
- * contract — CredentialRegistry, AssetRegistry — because only those are trusted callers.
- * The human or service that actually initiated the action is the transaction's sender, so
- * that is resolved separately and reported as `actor`. An auditor asking "who revoked
- * this?" means the account, not the contract that happened to write the row.
+ * Three parties, deliberately kept apart, because collapsing any two makes the log unable
+ * to answer the question an auditor actually asks:
+ *
+ *   `actor`    — WHO ASKED. Recorded on-chain by the contract, resolved through ERC-2771
+ *                from the requester's own signature, so it cannot be asserted by the
+ *                relayer. This is the field that attributes an action to a person.
+ *   `via`      — WHICH CONTRACT wrote the row. Always a sibling system contract, because
+ *                only those are trusted callers of the AuditTrail.
+ *   `executor` — WHO PAID. The transaction's sender: the relayer. Read from the chain's own
+ *                record of the transaction, never from calldata.
+ *
+ * Before actor attribution existed, `actor` was derived from the transaction sender — which
+ * meant it named the relayer for every action, and the ledger could not distinguish one
+ * administrator from another.
  */
 export interface RawAuditEvent {
   /** Monotonic index assigned by the contract. Unique and gap-free — the cursor key. */
@@ -21,8 +29,10 @@ export interface RawAuditEvent {
   refHash: string;
   /** System contract that wrote the entry. */
   via: string;
-  /** Externally-owned account that sent the transaction, when it could be resolved. */
+  /** The identity that REQUESTED the action, proven on-chain. */
   actor: string | null;
+  /** The account that SUBMITTED the transaction, when it could be resolved. */
+  executor: string | null;
   blockNumber: number;
   logIndex: number;
   transactionHash: string;
@@ -85,6 +95,7 @@ query AuditEntries($first: Int!, $where: AuditEntry_filter!) {
     refHash
     via
     actor
+    executor
     blockNumber
     logIndex
     transactionHash
@@ -99,6 +110,7 @@ interface SubgraphRow {
   refHash: string;
   via: string;
   actor: string | null;
+  executor: string | null;
   blockNumber: string;
   logIndex: string;
   transactionHash: string;
@@ -181,6 +193,7 @@ function toRawEvent(row: SubgraphRow): RawAuditEvent {
     refHash: row.refHash,
     via: row.via,
     actor: row.actor,
+    executor: row.executor,
     blockNumber: Number(row.blockNumber),
     logIndex: Number(row.logIndex),
     transactionHash: row.transactionHash,
@@ -193,7 +206,7 @@ function toRawEvent(row: SubgraphRow): RawAuditEvent {
 // ---------------------------------------------------------------------------
 
 const ACTION_LOGGED = parseAbiItem(
-  "event ActionLogged(uint256 indexed entryId, bytes32 indexed didHash, uint8 indexed actionCode, bytes32 refHash, address caller, uint64 timestamp)",
+  "event ActionLogged(uint256 indexed entryId, bytes32 indexed didHash, uint8 indexed actionCode, address actor, bytes32 refHash, address caller, uint64 timestamp)",
 );
 
 export interface OnChainAuditOptions {
@@ -276,6 +289,7 @@ export class OnChainAuditSource implements AuditEventSource {
           entryId?: bigint;
           didHash?: Hex;
           actionCode?: number;
+          actor?: Address;
           refHash?: Hex;
           caller?: Address;
           timestamp?: bigint;
@@ -289,7 +303,9 @@ export class OnChainAuditSource implements AuditEventSource {
           actionCode: Number(args.actionCode ?? 0),
           refHash: args.refHash ?? `0x${"0".repeat(64)}`,
           via: args.caller ?? "",
-          actor: senders.get(log.transactionHash ?? "") ?? null,
+          // From the event: proven, and independent of who submitted the transaction.
+          actor: args.actor ?? null,
+          executor: senders.get(log.transactionHash ?? "") ?? null,
           blockNumber: Number(log.blockNumber ?? 0n),
           logIndex: Number(log.logIndex ?? 0),
           transactionHash: log.transactionHash ?? "",

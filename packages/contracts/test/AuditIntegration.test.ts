@@ -9,6 +9,28 @@ import type {
   RoleAccessControl,
 } from "../typechain-types";
 
+/**
+ * Deployment options for an ERC-2771 aware implementation.
+ *
+ * Constructor arguments are normally unsafe in an upgradeable contract. They are safe here
+ * because the forwarder address is immutable — which is the property that stops actor
+ * attribution from being swappable after deployment.
+ */
+const proxyOptionsFor = (forwarder: string) =>
+  ({
+    kind: "uups" as const,
+    constructorArgs: [forwarder],
+    unsafeAllow: ["constructor", "state-variable-immutable"],
+  }) as never;
+
+async function deployForwarder(): Promise<string> {
+  const forwarder = await (
+    await ethers.getContractFactory("TrustChainForwarder")
+  ).deploy("TrustChainForwarder");
+  await forwarder.waitForDeployment();
+  return forwarder.getAddress();
+}
+
 const ADMIN_TRANSFER_DELAY = 3n * 24n * 60n * 60n;
 const id = (label: string) => ethers.keccak256(ethers.toUtf8Bytes(label));
 
@@ -41,6 +63,7 @@ const ACTION = {
 
 /** Deploys the whole platform and wires every contract into the audit trail. */
 async function wiredSystemFixture() {
+  const forwarderAddress = await deployForwarder();
   const [owner, manager, alice, bob, newKey] = await ethers.getSigners();
   if (!owner || !manager || !alice || !bob || !newKey) {
     throw new Error("expected at least five funded signers");
@@ -49,28 +72,28 @@ async function wiredSystemFixture() {
   const acl = (await upgrades.deployProxy(
     await ethers.getContractFactory("RoleAccessControl"),
     [owner.address, ADMIN_TRANSFER_DELAY],
-    { kind: "uups" },
+    proxyOptionsFor(forwarderAddress),
   )) as unknown as RoleAccessControl;
   await acl.waitForDeployment();
 
   const did = (await upgrades.deployProxy(
     await ethers.getContractFactory("DIDRegistry"),
     [owner.address],
-    { kind: "uups" },
+    proxyOptionsFor(forwarderAddress),
   )) as unknown as DIDRegistry;
   await did.waitForDeployment();
 
   const assets = (await upgrades.deployProxy(
     await ethers.getContractFactory("AssetRegistry"),
     ["TrustChain Asset", "TCA", await acl.getAddress(), await did.getAddress()],
-    { kind: "uups" },
+    proxyOptionsFor(forwarderAddress),
   )) as unknown as AssetRegistry;
   await assets.waitForDeployment();
 
   const credentials = (await upgrades.deployProxy(
     await ethers.getContractFactory("CredentialRegistry"),
     [await acl.getAddress(), await did.getAddress()],
-    { kind: "uups" },
+    proxyOptionsFor(forwarderAddress),
   )) as unknown as CredentialRegistry;
   await credentials.waitForDeployment();
 
@@ -90,7 +113,19 @@ async function wiredSystemFixture() {
   await assets.connect(owner).setAuditTrail(await trail.getAddress());
   await credentials.connect(owner).setAuditTrail(await trail.getAddress());
 
-  return { acl, did, assets, credentials, trail, owner, manager, alice, bob, newKey };
+  return {
+    forwarderAddress,
+    acl,
+    did,
+    assets,
+    credentials,
+    trail,
+    owner,
+    manager,
+    alice,
+    bob,
+    newKey,
+  };
 }
 
 describe("audit trail integration", () => {

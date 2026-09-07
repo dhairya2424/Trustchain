@@ -23,6 +23,15 @@ import path from "node:path";
 
 const DEFAULT_ADMIN_DELAY_SECONDS = 3 * 24 * 60 * 60; // 3 days
 
+/**
+ * EIP-712 domain name for forwarded requests.
+ *
+ * Signers must use exactly this string, so it is defined once here and read by the backend
+ * from the deployment record rather than retyped — a mismatch would make every signature
+ * fail verification for no visible reason.
+ */
+const FORWARDER_NAME = "TrustChainForwarder";
+
 interface DeployedContract {
   address: string;
   implementation?: string;
@@ -64,11 +73,36 @@ async function main(): Promise<void> {
   );
   console.log(`admin delay    ${adminDelay}s\n`);
 
+  /*
+   * 0 — the forwarder, first, because every implementation below stores its address
+   * immutably at construction.
+   *
+   * That immutability is deliberate rather than incidental: a trusted forwarder that could
+   * be swapped later would be a complete takeover of actor attribution, since whoever
+   * controlled it could assert any identity for any action. Changing it requires an
+   * upgrade, which the Safe governs.
+   */
+  const forwarder = await (
+    await ethers.getContractFactory("TrustChainForwarder")
+  ).deploy(FORWARDER_NAME);
+  await forwarder.waitForDeployment();
+  const forwarderAddress = await forwarder.getAddress();
+  console.log(`TrustChainForwarder ${forwarderAddress}`);
+
+  // The implementations take the forwarder as a constructor argument, which the upgrades
+  // plugin has to be told about explicitly — constructor arguments are normally unsafe in
+  // an upgradeable contract, and are safe here only because this one is immutable.
+  const proxyOptions = {
+    kind: "uups" as const,
+    constructorArgs: [forwarderAddress],
+    unsafeAllow: ["constructor", "state-variable-immutable"] as never,
+  };
+
   // 1 — authorization authority
   const acl = await upgrades.deployProxy(
     await ethers.getContractFactory("RoleAccessControl"),
     [deployer.address, adminDelay],
-    { kind: "uups" },
+    proxyOptions,
   );
   await acl.waitForDeployment();
   const aclAddress = await acl.getAddress();
@@ -78,7 +112,7 @@ async function main(): Promise<void> {
   const did = await upgrades.deployProxy(
     await ethers.getContractFactory("DIDRegistry"),
     [deployer.address],
-    { kind: "uups" },
+    proxyOptions,
   );
   await did.waitForDeployment();
   const didAddress = await did.getAddress();
@@ -88,7 +122,7 @@ async function main(): Promise<void> {
   const assets = await upgrades.deployProxy(
     await ethers.getContractFactory("AssetRegistry"),
     [assetName, assetSymbol, aclAddress, didAddress],
-    { kind: "uups" },
+    proxyOptions,
   );
   await assets.waitForDeployment();
   const assetsAddress = await assets.getAddress();
@@ -98,7 +132,7 @@ async function main(): Promise<void> {
   const credentials = await upgrades.deployProxy(
     await ethers.getContractFactory("CredentialRegistry"),
     [aclAddress, didAddress],
-    { kind: "uups" },
+    proxyOptions,
   );
   await credentials.waitForDeployment();
   const credentialsAddress = await credentials.getAddress();
@@ -161,6 +195,7 @@ async function main(): Promise<void> {
         kind: "uups-proxy",
       },
       AuditTrail: { address: trailAddress, kind: "immutable" },
+      TrustChainForwarder: { address: forwarderAddress, kind: "immutable" },
     },
   };
 

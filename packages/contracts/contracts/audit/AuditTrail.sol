@@ -30,7 +30,17 @@ contract AuditTrail is IAuditTrail {
     struct Entry {
         bytes32 didHash;
         bytes32 refHash;
+        /// @dev The system contract that wrote the row (AssetRegistry, CredentialRegistry, ...).
         address caller;
+        /**
+         * @dev The identity that REQUESTED the action.
+         *
+         * Resolved by the calling contract through {_msgSender}, so under ERC-2771 it is the
+         * address that signed the request rather than the relayer that submitted it. This is
+         * the field that makes the trail attributable to a person rather than to whichever
+         * account happened to pay for gas.
+         */
+        address actor;
         uint8 actionCode;
         uint64 timestamp;
         uint64 blockNumber;
@@ -41,10 +51,19 @@ contract AuditTrail is IAuditTrail {
     Entry[] private _entries;
     mapping(address caller => bool trusted) private _trustedCallers;
 
+    /**
+     * @dev `actor` is indexed so an auditor can filter the whole history by who requested
+     *      it — the question the problem statement actually asks of an audit trail.
+     *
+     *      The executor is absent by design: it is the transaction's sender, which the chain
+     *      records itself. Emitting it here would mean trusting calldata for something the
+     *      chain already knows for certain.
+     */
     event ActionLogged(
         uint256 indexed entryId,
         bytes32 indexed didHash,
         uint8 indexed actionCode,
+        address actor,
         bytes32 refHash,
         address caller,
         uint64 timestamp
@@ -55,6 +74,7 @@ contract AuditTrail is IAuditTrail {
     error NotAdmin(address caller);
     error NotTrustedCaller(address caller);
     error IndexOutOfBounds(uint256 index, uint256 length);
+    error InvalidActor();
     error InvalidRange(uint256 start, uint256 length);
 
     constructor(address accessControl_) {
@@ -81,9 +101,14 @@ contract AuditTrail is IAuditTrail {
     function logAction(
         bytes32 didHash,
         uint8 actionCode,
-        bytes32 refHash
+        bytes32 refHash,
+        address actor
     ) external returns (uint256 entryId) {
         if (!_trustedCallers[msg.sender]) revert NotTrustedCaller(msg.sender);
+        // An entry that cannot say who asked for the action is not an audit record. The
+        // allowlisted callers always have a resolved sender, so a zero here means a caller
+        // was changed carelessly rather than that the actor was genuinely unknown.
+        if (actor == address(0)) revert InvalidActor();
 
         entryId = _entries.length;
 
@@ -92,13 +117,14 @@ contract AuditTrail is IAuditTrail {
                 didHash: didHash,
                 refHash: refHash,
                 caller: msg.sender,
+                actor: actor,
                 actionCode: actionCode,
                 timestamp: uint64(block.timestamp),
                 blockNumber: uint64(block.number)
             })
         );
 
-        emit ActionLogged(entryId, didHash, actionCode, refHash, msg.sender, uint64(block.timestamp));
+        emit ActionLogged(entryId, didHash, actionCode, actor, refHash, msg.sender, uint64(block.timestamp));
     }
 
     /// @inheritdoc IAuditTrail

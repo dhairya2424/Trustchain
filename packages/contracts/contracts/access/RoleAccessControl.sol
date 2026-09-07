@@ -11,6 +11,8 @@ import {IDIDResolver} from "../interfaces/IDIDResolver.sol";
 import {ActionCodes} from "../libraries/ActionCodes.sol";
 import {Permissions} from "../libraries/Permissions.sol";
 import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
+import {ERC2771ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/metatx/ERC2771ContextUpgradeable.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
 /**
  * @title RoleAccessControl
@@ -35,7 +37,12 @@ import {TrustChainRoles} from "../libraries/TrustChainRoles.sol";
  *      flow with an enforced delay. That is what stops a single compromised key from
  *      instantly and irreversibly seizing or abandoning the platform.
  */
-contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgradeable, UUPSUpgradeable {
+contract RoleAccessControl is
+    Initializable,
+    AccessControlDefaultAdminRulesUpgradeable,
+    ERC2771ContextUpgradeable,
+    UUPSUpgradeable
+{
     using EnumerableSet for EnumerableSet.Bytes32Set;
     using EnumerableSet for EnumerableSet.AddressSet;
 
@@ -88,7 +95,7 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
     error DIDNotActive(bytes32 didHash);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address trustedForwarder) ERC2771ContextUpgradeable(trustedForwarder) {
         _disableInitializers();
     }
 
@@ -191,7 +198,7 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
             _rolePermissionSet[role].remove(permission);
         }
 
-        emit PermissionUpdated(role, permission, allowed, msg.sender);
+        emit PermissionUpdated(role, permission, allowed, _msgSender());
     }
 
     /// @notice True when any role held by `account` carries `permission`.
@@ -241,13 +248,13 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
     function grantRoleToDID(bytes32 didHash, bytes32 role) external {
         address controller = _resolveActiveController(didHash);
         grantRole(role, controller);
-        emit RoleGrantedToDID(didHash, role, controller, msg.sender);
+        emit RoleGrantedToDID(didHash, role, controller, _msgSender());
     }
 
     function revokeRoleFromDID(bytes32 didHash, bytes32 role) external {
         address controller = _resolveActiveController(didHash);
         revokeRole(role, controller);
-        emit RoleRevokedFromDID(didHash, role, controller, msg.sender);
+        emit RoleRevokedFromDID(didHash, role, controller, _msgSender());
     }
 
     function _resolveActiveController(bytes32 didHash) private view returns (address controller) {
@@ -331,12 +338,52 @@ contract RoleAccessControl is Initializable, AccessControlDefaultAdminRulesUpgra
         // The entry id is informational. What matters is that a refused write reverts,
         // which propagates from this call.
         // slither-disable-next-line unused-return
-        auditTrail.logAction(didHash, actionCode, refHash);
+        auditTrail.logAction(didHash, actionCode, refHash, _msgSender());
     }
 
     function _authorizeUpgrade(
         address newImplementation
     ) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newImplementation == address(0)) revert ZeroAddress();
+    }
+
+    // ---------------------------------------------------------------------
+    // ERC-2771 context
+    // ---------------------------------------------------------------------
+
+    /**
+     * @dev Resolves the request's originator.
+     *
+     * When the call arrives through the trusted forwarder this is the address that SIGNED
+     * the request; otherwise it is `msg.sender` unchanged, so direct calls behave exactly
+     * as before. Every authorization check and every audit entry in this contract reads
+     * from here, which is what makes them attribute to the requester rather than to the
+     * relayer that paid for gas.
+     */
+    function _msgSender()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (address)
+    {
+        return ERC2771ContextUpgradeable._msgSender();
+    }
+
+    function _msgData()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (bytes calldata)
+    {
+        return ERC2771ContextUpgradeable._msgData();
+    }
+
+    function _contextSuffixLength()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (uint256)
+    {
+        return ERC2771ContextUpgradeable._contextSuffixLength();
     }
 }

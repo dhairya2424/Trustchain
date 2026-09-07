@@ -10,6 +10,8 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 
 import {IAuditTrail} from "../interfaces/IAuditTrail.sol";
 import {ActionCodes} from "../libraries/ActionCodes.sol";
+import {ERC2771ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/metatx/ERC2771ContextUpgradeable.sol";
+import {ContextUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ContextUpgradeable.sol";
 
 /**
  * @title DIDRegistry
@@ -31,6 +33,7 @@ contract DIDRegistry is
     AccessControlUpgradeable,
     PausableUpgradeable,
     EIP712Upgradeable,
+    ERC2771ContextUpgradeable,
     UUPSUpgradeable
 {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
@@ -92,7 +95,7 @@ contract DIDRegistry is
     error ControllerUnchanged();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
-    constructor() {
+    constructor(address trustedForwarder) ERC2771ContextUpgradeable(trustedForwarder) {
         // The implementation contract must never be initialisable in its own right;
         // only proxies delegating into it may be.
         _disableInitializers();
@@ -114,7 +117,7 @@ contract DIDRegistry is
     modifier onlyController(bytes32 didHash) {
         address controller = _records[didHash].controller;
         if (controller == address(0)) revert DIDNotFound(didHash);
-        if (msg.sender != controller) revert NotController(msg.sender, controller);
+        if (_msgSender() != controller) revert NotController(_msgSender(), controller);
         _;
     }
 
@@ -124,7 +127,7 @@ contract DIDRegistry is
 
     /// @notice Register a DID controlled by the caller.
     function registerDID(bytes32 didHash, bytes32 keyCommitment) external whenNotPaused {
-        _register(didHash, msg.sender, keyCommitment);
+        _register(didHash, _msgSender(), keyCommitment);
     }
 
     /**
@@ -162,7 +165,7 @@ contract DIDRegistry is
         });
         _didByController[controller] = didHash;
 
-        emit DIDRegistered(didHash, controller, keyCommitment, msg.sender, timestamp);
+        emit DIDRegistered(didHash, controller, keyCommitment, _msgSender(), timestamp);
         _audit(didHash, ActionCodes.DID_REGISTERED, keyCommitment);
     }
 
@@ -173,7 +176,7 @@ contract DIDRegistry is
     /**
      * @notice Rotate the controller using an EIP-712 authorisation from the current one.
      * @dev Anyone may submit the transaction; authority comes from the signature, not
-     *      from `msg.sender`. `nonce` must equal the DID's current `rotationNonce`, and
+     *      from `_msgSender()`. `nonce` must equal the DID's current `rotationNonce`, and
      *      the nonce advances on success — so replaying a captured signature reverts.
      *      ERC-1271 signatures are accepted, so a smart-contract wallet can control a DID.
      */
@@ -269,7 +272,7 @@ contract DIDRegistry is
         record.active = active;
         record.updatedAt = uint64(block.timestamp);
 
-        emit DIDStatusChanged(didHash, active, msg.sender);
+        emit DIDStatusChanged(didHash, active, _msgSender());
         _audit(didHash, ActionCodes.DID_STATUS_CHANGED, bytes32(uint256(active ? 1 : 0)));
     }
 
@@ -293,7 +296,7 @@ contract DIDRegistry is
         // The entry id is informational. What matters is that a refused write reverts,
         // which propagates from this call.
         // slither-disable-next-line unused-return
-        auditTrail.logAction(didHash, actionCode, refHash);
+        auditTrail.logAction(didHash, actionCode, refHash, _msgSender());
     }
 
     function pause() external onlyRole(ADMIN_ROLE) {
@@ -360,5 +363,45 @@ contract DIDRegistry is
         address newImplementation
     ) internal view override onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newImplementation == address(0)) revert ZeroAddress();
+    }
+
+    // ---------------------------------------------------------------------
+    // ERC-2771 context
+    // ---------------------------------------------------------------------
+
+    /**
+     * @dev Resolves the request's originator.
+     *
+     * When the call arrives through the trusted forwarder this is the address that SIGNED
+     * the request; otherwise it is `msg.sender` unchanged, so direct calls behave exactly
+     * as before. Every authorization check and every audit entry in this contract reads
+     * from here, which is what makes them attribute to the requester rather than to the
+     * relayer that paid for gas.
+     */
+    function _msgSender()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (address)
+    {
+        return ERC2771ContextUpgradeable._msgSender();
+    }
+
+    function _msgData()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (bytes calldata)
+    {
+        return ERC2771ContextUpgradeable._msgData();
+    }
+
+    function _contextSuffixLength()
+        internal
+        view
+        override(ContextUpgradeable, ERC2771ContextUpgradeable)
+        returns (uint256)
+    {
+        return ERC2771ContextUpgradeable._contextSuffixLength();
     }
 }

@@ -3,6 +3,28 @@ import { ethers, upgrades } from "hardhat";
 import { loadFixture, time } from "@nomicfoundation/hardhat-network-helpers";
 import type { DIDRegistry, PermissionedConsumerMock, RoleAccessControl } from "../typechain-types";
 
+/**
+ * Deployment options for an ERC-2771 aware implementation.
+ *
+ * Constructor arguments are normally unsafe in an upgradeable contract. They are safe here
+ * because the forwarder address is immutable — which is the property that stops actor
+ * attribution from being swappable after deployment.
+ */
+const proxyOptionsFor = (forwarder: string) =>
+  ({
+    kind: "uups" as const,
+    constructorArgs: [forwarder],
+    unsafeAllow: ["constructor", "state-variable-immutable"],
+  }) as never;
+
+async function deployForwarder(): Promise<string> {
+  const forwarder = await (
+    await ethers.getContractFactory("TrustChainForwarder")
+  ).deploy("TrustChainForwarder");
+  await forwarder.waitForDeployment();
+  return forwarder.getAddress();
+}
+
 const ZERO_ADDRESS = ethers.ZeroAddress;
 const ADMIN_TRANSFER_DELAY = 3n * 24n * 60n * 60n; // 3 days
 
@@ -30,15 +52,18 @@ const ALICE_DID = id("did:trustchain:alice");
 const KEY_COMMITMENT = id("key-material");
 
 async function deployFixture() {
+  const forwarderAddress = await deployForwarder();
   const [owner, admin, manager, auditor, user, outsider] = await ethers.getSigners();
   if (!owner || !admin || !manager || !auditor || !user || !outsider) {
     throw new Error("expected at least six funded signers");
   }
 
   const aclFactory = await ethers.getContractFactory("RoleAccessControl");
-  const acl = (await upgrades.deployProxy(aclFactory, [owner.address, ADMIN_TRANSFER_DELAY], {
-    kind: "uups",
-  })) as unknown as RoleAccessControl;
+  const acl = (await upgrades.deployProxy(
+    aclFactory,
+    [owner.address, ADMIN_TRANSFER_DELAY],
+    proxyOptionsFor(await deployForwarder()),
+  )) as unknown as RoleAccessControl;
   await acl.waitForDeployment();
 
   // owner holds DEFAULT_ADMIN + ADMIN from initialize; it staffs the other roles.
@@ -53,14 +78,16 @@ async function deployFixture() {
   )) as unknown as PermissionedConsumerMock;
   await consumer.waitForDeployment();
 
-  return { acl, consumer, owner, admin, manager, auditor, user, outsider };
+  return { forwarderAddress, acl, consumer, owner, admin, manager, auditor, user, outsider };
 }
 
 async function withDIDRegistry(acl: RoleAccessControl, ownerAddress: string) {
   const didFactory = await ethers.getContractFactory("DIDRegistry");
-  const registry = (await upgrades.deployProxy(didFactory, [ownerAddress], {
-    kind: "uups",
-  })) as unknown as DIDRegistry;
+  const registry = (await upgrades.deployProxy(
+    didFactory,
+    [ownerAddress],
+    proxyOptionsFor(await deployForwarder()),
+  )) as unknown as DIDRegistry;
   await registry.waitForDeployment();
 
   await acl.setDIDRegistry(await registry.getAddress());
@@ -104,7 +131,11 @@ describe("RoleAccessControl", () => {
       const factory = await ethers.getContractFactory("RoleAccessControl");
 
       await expect(
-        upgrades.deployProxy(factory, [ZERO_ADDRESS, ADMIN_TRANSFER_DELAY], { kind: "uups" }),
+        upgrades.deployProxy(
+          factory,
+          [ZERO_ADDRESS, ADMIN_TRANSFER_DELAY],
+          proxyOptionsFor(await deployForwarder()),
+        ),
       ).to.be.revertedWithCustomError(factory, "ZeroAddress");
     });
   });
@@ -491,12 +522,16 @@ describe("RoleAccessControl", () => {
 
   describe("upgradeability", () => {
     it("preserves roles and the permission matrix across an upgrade", async () => {
-      const { acl, manager } = await loadFixture(deployFixture);
+      const { forwarderAddress, acl, manager } = await loadFixture(deployFixture);
 
       const v2Factory = await ethers.getContractFactory("RoleAccessControlV2Mock");
       const upgraded = await upgrades.upgradeProxy(await acl.getAddress(), v2Factory, {
         call: { fn: "initializeV2", args: [] },
-        unsafeAllow: ["missing-initializer"],
+        // The V2 implementation takes the same immutable forwarder as V1, so the upgrade
+        // must supply it too — an upgrade that dropped it would silently deploy an
+        // implementation with no trusted forwarder and break actor attribution.
+        constructorArgs: [forwarderAddress],
+        unsafeAllow: ["missing-initializer", "constructor", "state-variable-immutable"],
       });
 
       expect(await upgraded.version()).to.equal("2.0.0");
@@ -506,10 +541,10 @@ describe("RoleAccessControl", () => {
     });
 
     it("refuses upgrades from ADMIN — only DEFAULT_ADMIN may upgrade", async () => {
-      const { acl, admin } = await loadFixture(deployFixture);
+      const { forwarderAddress, acl, admin } = await loadFixture(deployFixture);
 
       const v2Factory = await ethers.getContractFactory("RoleAccessControlV2Mock");
-      const v2 = await v2Factory.deploy();
+      const v2 = await v2Factory.deploy(forwarderAddress);
       await v2.waitForDeployment();
 
       await expect(
