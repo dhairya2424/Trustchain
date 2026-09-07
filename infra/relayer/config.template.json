@@ -23,6 +23,7 @@
       "symbol": "POL",
       "is_testnet": true,
       "required_confirmations": 1,
+      "average_blocktime_ms": 2000,
       "tags": ["polygon", "testnet"],
       "rpc_urls": ["${AMOY_RPC_URL}"]
     }

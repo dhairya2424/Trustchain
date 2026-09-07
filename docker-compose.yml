@@ -83,11 +83,10 @@ services:
     ports:
       # Loopback only. 8081 because 8080 is the local IPFS gateway placeholder.
       - "127.0.0.1:${RELAYER_PORT:-8081}:8080"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    # No healthcheck: the image is a distroless-style build with no shell HTTP client —
+    # neither curl nor wget is present — so any `test` we could write here would fail
+    # permanently and report the service as unhealthy while it is working fine. Readiness
+    # is checked from the host instead, against /api/v1/relayers.
 
 volumes:
   postgres-data:

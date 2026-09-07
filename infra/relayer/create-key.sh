@@ -45,5 +45,10 @@ cargo run --quiet --example create_key -- \
   --filename "$FILENAME" \
   --force
 
-chmod 0400 "$OUT_DIR/$FILENAME"
+# 0444, not 0400. This file is created here as root, but the relayer image runs as
+# uid 65532 (nonroot) and mounts the directory read-only — a root-owned 0400 file would be
+# unreadable to it, and the service would fail to start with a confusing error. The
+# contents are encrypted under KEYSTORE_PASSPHRASE, so readability is not the control;
+# the passphrase is, and it lives in a separate gitignored file.
+chmod 0444 "$OUT_DIR/$FILENAME"
 echo "keystore written to $OUT_DIR/$FILENAME"

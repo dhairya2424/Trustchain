@@ -168,6 +168,17 @@ not understand must not be reported to a caller as a completed mint.
 - Port **8081**, because 8080 is the local IPFS gateway placeholder.
 - The config directory is mounted **read-only**: the service reads its configuration and
   key and never rewrites them.
+- The image runs as **uid 65532 (nonroot)**, so the keystore is written `0444` rather than
+  `0400`. A root-owned `0400` file on a read-only mount is unreadable to that user and the
+  service fails to start with an unhelpful error. Readability is not the control here — the
+  file is encrypted, and the passphrase lives in a separate gitignored file.
+- The image ships **no shell HTTP client** (no curl, no wget), so the compose service
+  deliberately has **no healthcheck**: any `test` expressible inside the container would
+  fail permanently and report a working service as unhealthy. Readiness is checked from the
+  host against `/api/v1/relayers` instead.
+- Building the keystore compiles the full relayer crate tree — alloy plus the Solana and
+  Stellar signers — which takes tens of minutes on a cold cache. It is a one-time step;
+  mount a cargo cache volume if you expect to repeat it.
 - Pinned to **v1.5.0**. Releases exist up to v1.8.0, but the documentation labels v1.5.x
   the latest stable line, and that is what this integration was written and verified
   against.
