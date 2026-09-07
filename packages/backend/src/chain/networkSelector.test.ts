@@ -14,6 +14,7 @@ const ADDRESSES = {
   AssetRegistry: "0x3333333333333333333333333333333333333333",
   CredentialRegistry: "0x4444444444444444444444444444444444444444",
   AuditTrail: "0x5555555555555555555555555555555555555555",
+  TrustChainForwarder: "0x6666666666666666666666666666666666666666",
 };
 
 const SIGNER = "0x29DA04934BCA824829Ece37452Dbc58DE986234A";
@@ -331,7 +332,10 @@ describe("network descriptors", () => {
     expect(AMOY.priority).toBeLessThan(HARDHAT.priority);
   });
 
-  it("covers all five contracts", () => {
-    expect(CONTRACT_NAMES).toHaveLength(5);
+  it("covers every contract a network needs, including the forwarder", () => {
+    // The forwarder is checked like any other: a network without one cannot attribute an
+    // action to the identity that requested it, so it is not a usable network.
+    expect(CONTRACT_NAMES).toHaveLength(6);
+    expect(CONTRACT_NAMES).toContain("TrustChainForwarder");
   });
 });

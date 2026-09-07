@@ -102,29 +102,46 @@ contract when it lands.
 - Direct (non-forwarded) calls still work unchanged — `_msgSender()` falls back to
   `msg.sender` — so a direct administrative action is recorded with that account as actor.
 
-## 7. What is done, and what is not
+## 7. The API shape this forces
 
-**Done and proven:** the contracts, the forwarder, the audit trail, the event, the indexer,
-the API's actor/executor reporting, the CSV export, and the backend's signature verification
-with its target allowlist. 137 contract tests, including 10 written specifically for
-attribution and spoofing.
-
-**Not yet wired: the two-phase signing flow on the write routes.** Today `POST /assets/mint`
-and the credential routes still call the contracts through the relayer directly, so those
-actions are recorded with the **relayer** as actor — correct and honest, but not per-user.
-Making them per-user requires the request to be signed by the user, which means:
+An attributed write is two calls, and the shape follows from the security property rather
+than from preference: a signature only the requester can produce cannot be produced by a
+server on their behalf.
 
 ```
-POST /assets/mint/prepare   → validates, pins, returns the EIP-712 payload to sign
-   (user signs in their wallet)
-POST /chain/forward         → verifies from == session, target allowed, then relays
+POST /assets/mint            multipart; scans, strips metadata, pins, returns EIP-712 payload
+   (the requester signs it in their wallet)
+POST /network/forward        { request, signature, verifyingContract, chainId }
 ```
 
-**This has a real product consequence worth deciding deliberately: the user signs in their
-wallet for every mint, issuance and revocation.** That is inherent — attribution that cannot
-be forged by the relayer requires a signature only the actor can produce. It also fits the
-problem statement's "authenticated using cryptographic proofs" and the self-sovereign
-framing, and it is the same interaction pattern as the SIWE sign-in already in place.
+`/assets/mint`, `/credentials/issue` and `/credentials/revoke` return **200, not 202** —
+nothing has been submitted. Reporting "accepted" for an action that still needs a signature
+would be the same kind of overclaim as naming the wrong chain. `/network/forward` returns
+202 and names the actor it attributed the call to, which is the session's address by
+construction because the verifier refuses anything else.
 
-Everything needed for that flow exists and is tested; what remains is the two endpoints and
-the frontend signing call, which belongs with Phase 3's wallet integration.
+**There is deliberately no path that submits without a signature.** Keeping one "for
+convenience" would mean the convenient path is the one that gets used, and every action
+through it would again be attributed to the relayer.
+
+### The product consequence
+
+**The user signs in their wallet for every mint, issuance and revocation.** That is inherent
+to attribution a relayer cannot forge. It fits the problem statement's "authenticated using
+cryptographic proofs" and the self-sovereign framing, and it is the same interaction the
+SIWE sign-in already uses — but it is a real change to how the app feels, and worth knowing
+before Phase 3 designs around it.
+
+## 8. What is done
+
+Contracts, forwarder, audit trail, event, indexer, API reporting of actor and executor, CSV
+export, backend signature verification with its target allowlist, and the two-phase write
+flow on every write route.
+
+Proven by 137 contract tests (10 written specifically for attribution and spoofing), 517
+backend tests (13 for request verification), and the live exit check, which mints through a
+real wallet signature and then asserts against real chain data that the trail names the
+**manager** who signed and not the **relayer** who paid.
+
+Still open: the frontend signing call, which belongs with Phase 3's wallet integration —
+the API contract it needs is fixed and documented above.

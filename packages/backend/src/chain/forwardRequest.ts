@@ -148,6 +148,31 @@ export async function verifyForwardRequest(options: {
   }
 }
 
+/**
+ * Renders typed data as JSON a wallet can consume.
+ *
+ * `JSON.stringify` throws on a bigint, so `value`, `gas` and `nonce` are emitted as decimal
+ * strings. Wallets accept that — EIP-712 numeric fields are canonicalised before hashing —
+ * and the alternative, silently narrowing to a JavaScript number, would corrupt a nonce or
+ * a gas limit above 2^53 without any error at all.
+ */
+export function serializeTypedData(typedData: ForwardTypedData) {
+  return {
+    domain: typedData.domain,
+    types: typedData.types,
+    primaryType: typedData.primaryType,
+    message: {
+      from: typedData.message.from,
+      to: typedData.message.to,
+      value: typedData.message.value.toString(),
+      gas: typedData.message.gas.toString(),
+      nonce: typedData.message.nonce.toString(),
+      deadline: typedData.message.deadline,
+      data: typedData.message.data,
+    },
+  };
+}
+
 const FORWARDER_ABI = [
   {
     type: "function",

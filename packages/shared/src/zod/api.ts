@@ -188,3 +188,36 @@ export type RevokeCredentialRequest = z.infer<typeof revokeCredentialRequest>;
 export type VerifyCredentialRequest = z.infer<typeof verifyCredentialRequest>;
 export type UpdateProfileRequest = z.infer<typeof updateProfileRequest>;
 export type AuditQuery = z.infer<typeof auditQuery>;
+
+/**
+ * A signed ERC-2771 forward request, returned to the API after the requester signs it.
+ *
+ * The server rebuilds the typed data from these fields and checks the signature against the
+ * authenticated session, so nothing here is trusted on the client's word. The shape is
+ * validated only so a malformed body is refused at the edge rather than deep inside a
+ * signature routine.
+ *
+ * `value` is pinned to zero: a forwarded request must never move native currency, because
+ * the account paying is the platform's relayer.
+ */
+export const forwardRequestBody = z
+  .object({
+    request: z
+      .object({
+        from: evmAddress,
+        to: evmAddress,
+        value: z.union([z.literal(0), z.literal("0")]),
+        gas: z.union([z.number().int().positive(), z.string().regex(/^[0-9]+$/)]),
+        nonce: z.union([z.number().int().nonnegative(), z.string().regex(/^[0-9]+$/)]),
+        deadline: z.number().int().positive(),
+        data: z.string().regex(/^0x[0-9a-fA-F]*$/, "must be 0x-prefixed hex"),
+      })
+      .strict(),
+    signature: z.string().regex(/^0x[0-9a-fA-F]{130}$/, "must be a 65-byte 0x-prefixed signature"),
+    /** The forwarder the request was signed for. Checked against the active network. */
+    verifyingContract: evmAddress,
+    chainId: z.coerce.number().int().positive(),
+  })
+  .strict();
+
+export type ForwardRequestBody = z.infer<typeof forwardRequestBody>;

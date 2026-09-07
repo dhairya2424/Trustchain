@@ -25,6 +25,7 @@ import {
   SelectedAuditSource,
   SelectedCredentialReader,
   SelectedPermissionReader,
+  SelectedRoleReader,
 } from "./chain/selected";
 import type { CredentialDependencies } from "./credentials/routes";
 import { LocalPinner } from "./dev/localPinner";
@@ -39,7 +40,7 @@ interface Platform {
   tokens: TokenService;
 }
 
-function buildAuth(env: Env): Platform {
+function buildAuth(env: Env, selector: NetworkSelector | undefined): Platform {
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
   const store = new RedisStore(redis);
 
@@ -70,7 +71,10 @@ function buildAuth(env: Env): Platform {
     auth: {
       nonces: new NonceService(store, env.SIWE_NONCE_TTL_SECONDS),
       tokens,
-      roles,
+      // Sign-in reads roles from the ACTIVE network, not from fixed addresses. Bound to
+      // the latter it would issue sessions with no roles after a redeploy or a network
+      // switch — a failure that reads as a permissions problem rather than a stale config.
+      roles: selector ? new SelectedRoleReader(selector) : roles,
       siwe: new SiweVerifier({
         domain: env.SIWE_DOMAIN,
         // Contract wallets cannot be verified locally; viem's client-backed check
@@ -278,14 +282,17 @@ function main(): void {
     throw error;
   }
 
-  const platform = buildAuth(env);
-  const { auth, redis } = platform;
-
   const pino = createPino({ level: env.LOG_LEVEL, environment: env.NODE_ENV });
   const logger = new PinoLogger(pino);
 
-  const resolveCaller = createSessionResolver({ tokens: platform.tokens, logger });
+  // The selector is built first: sign-in itself reads roles from the active network, so it
+  // has to exist before the auth stack that depends on it.
   const selector = buildSelector(env, logger);
+
+  const platform = buildAuth(env, selector);
+  const { auth, redis } = platform;
+
+  const resolveCaller = createSessionResolver({ tokens: platform.tokens, logger });
   const pinner = buildPinner(env, logger);
   const credentials = buildCredentials(env, platform, logger, resolveCaller, selector, pinner);
   const assets = buildAssets(env, platform, logger, resolveCaller, selector, pinner);
@@ -305,7 +312,7 @@ function main(): void {
     ...(selector ? { audit: buildAudit(env, selector, logger, resolveCaller) } : {}),
     ...(credentials ? { credentials } : {}),
     ...(assets ? { assets } : {}),
-    ...(selector ? { network: { selector, logger } } : {}),
+    ...(selector ? { network: { selector, logger, resolveCaller } } : {}),
     httpLogger: httpLogger(pino),
     security: {
       // TLS is terminated by Nginx in production, so a plain-HTTP request there means the

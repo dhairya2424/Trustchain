@@ -167,6 +167,50 @@ async function waitForAction(jar, action, since, timeoutMs = 90_000) {
   return null;
 }
 
+/**
+ * Signs a prepared request and forwards it.
+ *
+ * This is the half of an attributed write the server cannot perform: the signature must
+ * come from the requester's own key, which is precisely why a relayer cannot forge an
+ * actor. The server described the action; here the user authorises it.
+ */
+async function signAndForward(account, jar, typedData) {
+  const message = {
+    from: typedData.message.from,
+    to: typedData.message.to,
+    value: BigInt(typedData.message.value),
+    gas: BigInt(typedData.message.gas),
+    nonce: BigInt(typedData.message.nonce),
+    deadline: typedData.message.deadline,
+    data: typedData.message.data,
+  };
+
+  const signature = await account.signTypedData({
+    domain: typedData.domain,
+    types: typedData.types,
+    primaryType: "ForwardRequest",
+    message,
+  });
+
+  return call("POST", "/network/forward", {
+    jar,
+    body: {
+      request: {
+        from: message.from,
+        to: message.to,
+        value: 0,
+        gas: message.gas.toString(),
+        nonce: message.nonce.toString(),
+        deadline: message.deadline,
+        data: message.data,
+      },
+      signature,
+      verifyingContract: typedData.domain.verifyingContract,
+      chainId: typedData.domain.chainId,
+    },
+  });
+}
+
 function didHashFor(address) {
   return keccak256(toBytes(`did:trustchain:local:${address.toLowerCase()}`));
 }
@@ -358,15 +402,32 @@ async function main() {
   const mint = await call("POST", "/assets/mint", { jar: manager.jar, body: form, json: false });
   check(
     "POST /assets/mint is accepted",
-    mint.status === 202,
+    mint.status === 200,
     `got ${mint.status} ${JSON.stringify(mint.body).slice(0, 300)}`,
   );
-  // 202 means "accepted for submission", not "mined": the relayer queues and submits on
-  // its own workers. Whether it landed is asserted later, against the audit trail.
+  // 200, not 202: the server prepares a request and does NOT submit it. Submitting on the
+  // caller's behalf is what made every action look like the relayer's.
   check(
-    "the mint was accepted for relaying",
-    ["pending", "mined"].includes(mint.body?.status),
-    JSON.stringify(mint.body?.status),
+    "the mint is prepared for signing rather than submitted by the server",
+    mint.body?.typedData?.primaryType === "ForwardRequest",
+    JSON.stringify(mint.body?.typedData?.primaryType),
+  );
+  check(
+    "the prepared request names the caller as the actor",
+    mint.body?.typedData?.message?.from?.toLowerCase() === manager.account.address.toLowerCase(),
+    mint.body?.typedData?.message?.from,
+  );
+
+  const forwarded = await signAndForward(manager.account, manager.jar, mint.body.typedData);
+  check(
+    "the signed request is accepted and relayed",
+    forwarded.status === 202,
+    `got ${forwarded.status} ${JSON.stringify(forwarded.body).slice(0, 200)}`,
+  );
+  check(
+    "the forward response attributes the action to the signer",
+    forwarded.body?.actor?.toLowerCase() === manager.account.address.toLowerCase(),
+    forwarded.body?.actor,
   );
   check(
     "an ipfs:// tokenURI was recorded",
@@ -406,18 +467,28 @@ async function main() {
     `actions seen: ${[...new Set(entries.map((e) => e.action))].join(", ") || "none"}`,
   );
   /*
-   * The on-chain actor is the RELAYER, not the human who asked for the mint.
+   * The point of actor attribution, checked against real chain data.
    *
-   * This is a real and important consequence of relaying: the chain records whoever signed
-   * the transaction, and that is always the relayer's signer. The requesting account is
-   * known only off-chain, in the API's structured log, which carries the actor alongside
-   * the same transaction id. See docs/NETWORKS.md.
+   * The relayer submitted the transaction and paid for it; the manager signed the request.
+   * The trail must name the manager, and must NOT name the relayer — otherwise the ledger
+   * cannot tell one administrator from another, which is what the problem statement asks
+   * an audit trail to do.
    */
   const relayerAddress = (await call("GET", "/network")).body?.active?.signerAddress ?? "";
   check(
-    "the entry attributes the account that signed — the relayer",
-    mintEntry?.actor?.toLowerCase() === relayerAddress.toLowerCase(),
+    "the entry attributes the identity that REQUESTED the mint",
+    mintEntry?.actor?.toLowerCase() === privateKeyToAccount(MANAGER_KEY).address.toLowerCase(),
+    `actor=${mintEntry?.actor}`,
+  );
+  check(
+    "the entry does NOT attribute the mint to the relayer that paid for it",
+    mintEntry?.actor?.toLowerCase() !== relayerAddress.toLowerCase(),
     `actor=${mintEntry?.actor} relayer=${relayerAddress}`,
+  );
+  check(
+    "the executor is reported separately, and is the relayer",
+    mintEntry?.executor?.toLowerCase() === relayerAddress.toLowerCase(),
+    `executor=${mintEntry?.executor}`,
   );
   check(
     "`via` is the AssetRegistry contract, distinct from the actor",
@@ -461,8 +532,8 @@ async function main() {
   });
 
   check(
-    "POST /credentials/issue is accepted for a MANAGER",
-    issue.status === 202,
+    "POST /credentials/issue is prepared for a MANAGER",
+    issue.status === 200,
     `got ${issue.status} ${JSON.stringify(issue.body).slice(0, 300)}`,
   );
   check("a credential JWT is returned", typeof issue.body?.jwt === "string");
@@ -508,7 +579,14 @@ async function main() {
   });
   check("a USER cannot issue a credential", userIssue.status === 403, `got ${userIssue.status}`);
 
-  // Issuance is relayed asynchronously too; the credential is not anchored until it lands.
+  const issueForward = await signAndForward(manager.account, manager.jar, issue.body.typedData);
+  check(
+    "the signed issuance is accepted and relayed",
+    issueForward.status === 202,
+    `got ${issueForward.status} ${JSON.stringify(issueForward.body).slice(0, 200)}`,
+  );
+
+  // Relayed asynchronously; the credential is not anchored until it lands.
   const issuedEntry = await waitForAction(admin.jar, "CREDENTIAL_ISSUED", beforeIssueId);
   check("the issuance reached the chain within the timeout", issuedEntry !== null);
 
@@ -542,7 +620,14 @@ async function main() {
     jar: manager.jar,
     body: { credentialHash: issue.body?.credentialHash, reasonCode: 1 },
   });
-  check("revocation is accepted", revoke.status === 202, `got ${revoke.status}`);
+  check("revocation is prepared", revoke.status === 200, `got ${revoke.status}`);
+
+  const revokeForward = await signAndForward(manager.account, manager.jar, revoke.body.typedData);
+  check(
+    "the signed revocation is accepted and relayed",
+    revokeForward.status === 202,
+    `got ${revokeForward.status}`,
+  );
 
   const revokedEntry = await waitForAction(admin.jar, "CREDENTIAL_REVOKED", beforeRevokeId);
   check("the revocation reached the chain within the timeout", revokedEntry !== null);

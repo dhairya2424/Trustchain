@@ -4,8 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { RateLimiterMemory } from "rate-limiter-flexible";
 
 import { createServer } from "../server";
-import { staticResolver } from "../chain/binding";
-import { HARDHAT } from "../chain/networks";
+import { testChain } from "../chain/testBinding";
 import { MemoryLogger } from "../http/logger";
 import type { Caller } from "../http/authorize";
 import { ROLE_IDS } from "../auth/roles";
@@ -53,18 +52,14 @@ function build(options: Harness = {}) {
         return options.snapshot ?? { status: "valid", credential: onChain() };
       },
     },
-    chain: staticResolver({
-      network: HARDHAT,
-      relayer: {
-        relayMint: async () => ({ transactionId: "tx-mint", status: "pending" as const }),
-        relayIssue: async (tx) => {
-          issued.push(tx);
-          return { transactionId: "tx-issue-1", status: "pending" as const };
-        },
-        relayRevoke: async (tx) => {
-          revoked.push(tx);
-          return { transactionId: "tx-revoke-1", status: "pending" as const };
-        },
+    chain: testChain({
+      relayIssue: async (tx) => {
+        issued.push(tx);
+        return { transactionId: "tx-issue-1", status: "pending" as const };
+      },
+      relayRevoke: async (tx) => {
+        revoked.push(tx);
+        return { transactionId: "tx-revoke-1", status: "pending" as const };
       },
     }),
     pinner: {
@@ -128,7 +123,20 @@ describe("POST /credentials/issue — authorization", () => {
   it("admits a caller the chain does grant it", async () => {
     const { app } = build();
 
-    expect((await request(app).post("/credentials/issue").send(issueBody)).status).toBe(202);
+    // 200, not 202: the credential is prepared and pinned, but nothing is anchored until
+    // the issuer signs the returned request.
+    expect((await request(app).post("/credentials/issue").send(issueBody)).status).toBe(200);
+  });
+
+  it("returns a request for the issuer to sign, rather than submitting one itself", async () => {
+    const { app, issued } = build();
+
+    const res = await request(app).post("/credentials/issue").send(issueBody);
+
+    expect(res.body.typedData?.primaryType).toBe("ForwardRequest");
+    expect(res.body.typedData?.message?.from).toBe(MANAGER.address);
+    // Nothing was relayed: an anchor attributed to the relayer is what this replaces.
+    expect(issued).toHaveLength(0);
   });
 });
 
@@ -150,18 +158,27 @@ describe("POST /credentials/issue — the credential", () => {
     expect(Buffer.from(res.body.contentKey, "base64")).toHaveLength(32);
   });
 
-  /** The second hard rule, checked against what the relayer was actually asked to send. */
+  /**
+   * The second hard rule, checked against the calldata the issuer is asked to authorise.
+   *
+   * Checking the prepared request rather than a relayer call is stricter: this is the exact
+   * byte string that will reach the chain, and the signature will cover it.
+   */
   it("anchors only hashes — no claim text reaches the transaction", async () => {
-    const { app, issued } = build();
+    const { app } = build();
 
-    await request(app).post("/credentials/issue").send(issueBody);
+    const res = await request(app).post("/credentials/issue").send(issueBody);
+    const calldata = res.body.typedData.message.data as string;
 
-    const sent = JSON.stringify(issued[0]);
-    expect(sent).not.toContain("Ada");
-    expect(sent).not.toContain("Lovelace");
-    expect(sent).not.toContain("Engineer");
-    expect(issued[0]?.credentialHash).toMatch(/^0x[0-9a-f]{64}$/);
-    expect(issued[0]?.didHash).toBe(DID);
+    expect(calldata).toMatch(/^0x[0-9a-f]+$/);
+    // ABI-encoded UTF-8 would appear as hex; check the readable forms cannot be present.
+    const asText = Buffer.from(calldata.slice(2), "hex").toString("latin1");
+    expect(asText).not.toContain("Ada");
+    expect(asText).not.toContain("Lovelace");
+    expect(asText).not.toContain("Engineer");
+    // The credential hash and DID are present, because those are what get anchored.
+    expect(calldata).toContain(res.body.credentialHash.slice(2));
+    expect(calldata).toContain(DID.slice(2));
   });
 
   /**
@@ -443,13 +460,16 @@ describe("POST /credentials/revoke", () => {
     expect((await request(app).post("/credentials/revoke").send(revokeBody)).status).toBe(403);
   });
 
-  it("relays the revocation with its reason code", async () => {
+  it("prepares the revocation with its reason code, for the revoker to sign", async () => {
     const { app, revoked } = build();
 
     const res = await request(app).post("/credentials/revoke").send(revokeBody);
 
-    expect(res.status).toBe(202);
-    expect(revoked[0]).toEqual(revokeBody);
+    expect(res.status).toBe(200);
+    expect(res.body.reasonCode).toBe(1);
+    expect(res.body.typedData?.message?.from).toBe(MANAGER.address);
+    // Not submitted on the caller's behalf — a revocation must be attributable too.
+    expect(revoked).toHaveLength(0);
   });
 
   /** A bare boolean tells an auditor something was revoked; a code tells them why. */
@@ -527,14 +547,7 @@ describe("issuance is not reachable without a permission reader", () => {
     const deps = {
       issuer,
       reader: { statusOf: async () => ({ status: "valid" as const, credential: onChain() }) },
-      chain: staticResolver({
-        network: HARDHAT,
-        relayer: {
-          relayMint: async () => ({ transactionId: "x", status: "pending" as const }),
-          relayIssue: relayIssueSpy,
-          relayRevoke: vi.fn(async () => ({ transactionId: "x", status: "pending" as const })),
-        },
-      }),
+      chain: testChain({ relayIssue: relayIssueSpy }),
       pinner: {
         pinFile: async () => {
           throw new Error("unused");

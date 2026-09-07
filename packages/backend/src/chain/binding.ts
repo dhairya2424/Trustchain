@@ -1,6 +1,8 @@
+import type { PublicClient } from "viem";
+
 import type { TransactionRelayer } from "../assets/relayer";
 import type { CredentialRelayer } from "../credentials/registry";
-import type { NetworkDescriptor } from "./networks";
+import type { NetworkContracts, NetworkDescriptor } from "./networks";
 
 /**
  * A relayer together with the network it submits to.
@@ -17,6 +19,16 @@ import type { NetworkDescriptor } from "./networks";
 export interface ChainBinding {
   network: NetworkDescriptor;
   relayer: TransactionRelayer & CredentialRelayer;
+  /**
+   * The addresses of that network, including the forwarder.
+   *
+   * Carried alongside because preparing a request to sign needs the forwarder's address and
+   * the target's, and taking them from anywhere else would reintroduce the possibility of
+   * describing one network while submitting to another.
+   */
+  contracts: NetworkContracts;
+  /** Reads that must happen on the same chain the write will land on — the actor's nonce. */
+  client: PublicClient;
 }
 
 /**

@@ -12,7 +12,8 @@ import type { MalwareScanner } from "./malware";
 import type { IpfsPinner } from "./pinata";
 import { buildProvenance, ProvenanceError, type AssetEventSource } from "./provenance";
 import type { ChainResolver } from "../chain/binding";
-import { explorerTxUrl } from "../chain/networks";
+import { encodeMint, prepareForwardedCall } from "../chain/forwarding";
+import { serializeTypedData } from "../chain/forwardRequest";
 import { toNetworkDto } from "../chain/routes";
 import { toAssetDto, type AssetRecord } from "./serializers";
 import { inspectUpload, MAX_UPLOAD_BYTES, safeDisplayName } from "./upload";
@@ -184,38 +185,46 @@ export function createAssetRouter(deps: AssetDependencies): Router {
         inspection.storageName,
       );
 
-      // 5 — the relayer signs. This process holds no key.
+      // 5 — describe the transaction for the requester to sign.
       //
-      // The binding is resolved here, immediately before submitting, and the same object
-      // supplies both the relayer and the network named in the response below.
+      // This endpoint deliberately does NOT submit. A mint must be attributable to the
+      // person who asked for it, and an attribution the relayer cannot forge requires a
+      // signature only that person can produce — so the server prepares, the wallet signs,
+      // and POST /network/forward relays. There is no second path that submits without a
+      // signature: such a path is exactly what made every action look like the relayer's.
       const chain = await deps.chain.active();
-      const relayed = await chain.relayer.relayMint({
-        toDID: fields.data.toDID,
-        tokenURI: pinnedMetadata.uri,
-        soulbound: fields.data.soulbound,
+
+      const prepared = await prepareForwardedCall({
+        chain,
+        chainId: chain.network.chainId,
+        actor: caller.address,
+        target: chain.contracts.AssetRegistry,
+        data: encodeMint(fields.data.toDID, pinnedMetadata.uri, fields.data.soulbound),
+        action: `Mint asset to ${fields.data.toDID.slice(0, 10)}...`,
       });
 
       deps.logger.log({
         level: "info",
-        msg: "asset.mint_relayed",
+        msg: "asset.mint_prepared",
         requestId: req.requestId,
         actor: caller.address,
         toDID: fields.data.toDID,
         cid: pinnedMetadata.cid,
         metadataStripped: stripped.removed,
-        transactionId: relayed.transactionId,
         network: chain.network.id,
       });
 
-      res.status(202).json({
-        status: relayed.status,
-        transactionId: relayed.transactionId,
+      // 200, not 202: nothing has been submitted yet. Reporting "accepted" for an action
+      // that still needs a signature would be the same kind of overclaim as naming the
+      // wrong chain.
+      res.status(200).json({
         tokenURI: pinnedMetadata.uri,
         imageUri: pinnedFile.uri,
         gatewayUrl: pinnedMetadata.gatewayUrl,
-        // Which chain this actually went to, and where a third party can check it.
         network: toNetworkDto(chain.network),
-        explorerUrl: relayed.hash ? explorerTxUrl(chain.network, relayed.hash) : null,
+        // Sign this, then POST it to /network/forward.
+        typedData: serializeTypedData(prepared.typedData),
+        summary: prepared.summary,
       });
     }),
   );

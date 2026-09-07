@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 
-import type { PermissionReader } from "../auth/roleReader";
+import type { IdentitySnapshot, PermissionReader, RoleReader } from "../auth/roleReader";
 import { OnChainRoleReader } from "../auth/roleReader";
 import type { PermissionName } from "../auth/roles";
 import type { CredentialReader, CredentialSnapshot } from "../credentials/registry";
@@ -61,6 +61,31 @@ export class SelectedPermissionReader implements PermissionReader {
       active.client,
     );
     return reader.hasPermission(address, permission);
+  }
+}
+
+/**
+ * Roles and DID at sign-in, read from the active network's registries.
+ *
+ * This one is easy to overlook because it runs once per login rather than per request, but
+ * it is the same hazard: bound to fixed addresses it would read a chain the platform is no
+ * longer using, and hand out sessions with no roles and no DID — which looks like a
+ * permissions problem rather than a configuration one.
+ */
+export class SelectedRoleReader implements RoleReader {
+  constructor(private readonly selector: NetworkSelector) {}
+
+  async read(address: Address): Promise<IdentitySnapshot> {
+    const active = await this.selector.active();
+    const reader = new OnChainRoleReader(
+      {
+        roleAccessControl: active.contracts.RoleAccessControl as Address,
+        didRegistry: active.contracts.DIDRegistry as Address,
+      },
+      "",
+      active.client,
+    );
+    return reader.read(address);
   }
 }
 

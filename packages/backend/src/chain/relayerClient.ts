@@ -240,6 +240,18 @@ export class OpenZeppelinRelayerClient implements TransactionRelayer, Credential
     return address as Address;
   }
 
+  /**
+   * Submits arbitrary calldata to a contract.
+   *
+   * Used for forwarded requests, where the target is the forwarder and the calldata is
+   * `execute(signedRequest)`. Deliberately absent from the relayer interfaces the routes
+   * depend on: only the forwarding endpoint, which checks the inner target against an
+   * allowlist first, has any business calling this.
+   */
+  async relayRaw(to: string, data: Hex): Promise<RelayedTransaction> {
+    return this.send(to, data);
+  }
+
   async relayMint(request: MintRequest): Promise<RelayedTransaction> {
     return this.send(
       this.options.assetRegistryAddress,

@@ -16,6 +16,8 @@ export interface NetworkContracts {
   AssetRegistry: string;
   CredentialRegistry: string;
   AuditTrail: string;
+  /** Verifies the requester's signature so the actor cannot be asserted by the relayer. */
+  TrustChainForwarder: string;
 }
 
 export const CONTRACT_NAMES: ReadonlyArray<keyof NetworkContracts> = [
@@ -24,6 +26,7 @@ export const CONTRACT_NAMES: ReadonlyArray<keyof NetworkContracts> = [
   "AssetRegistry",
   "CredentialRegistry",
   "AuditTrail",
+  "TrustChainForwarder",
 ];
 
 export interface NetworkDescriptor {

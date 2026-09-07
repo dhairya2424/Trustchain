@@ -13,7 +13,12 @@ import { asyncHandler } from "../http/middleware";
 import type { Logger } from "../http/logger";
 import { sealCredential } from "./envelope";
 import type { ChainResolver } from "../chain/binding";
-import { explorerTxUrl } from "../chain/networks";
+import {
+  encodeIssueCredential,
+  encodeRevokeCredential,
+  prepareForwardedCall,
+} from "../chain/forwarding";
+import { serializeTypedData } from "../chain/forwardRequest";
 import { toNetworkDto } from "../chain/routes";
 import type { CredentialReader } from "./registry";
 import { CredentialError, credentialHashOf, type CredentialIssuer } from "./vc";
@@ -114,12 +119,17 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         `credential-${issued.credentialHash.slice(2, 18)}`,
       );
 
+      // Prepared, not submitted. The anchor must be attributable to the issuer who asked
+      // for it, which requires their signature — see chain/forwarding.ts.
       const chain = await deps.chain.active();
-      const relayed = await chain.relayer.relayIssue({
-        credentialHash: issued.credentialHash,
-        didHash,
-        schemaId: issued.schemaId,
-        expiresAt,
+
+      const prepared = await prepareForwardedCall({
+        chain,
+        chainId: chain.network.chainId,
+        actor: caller.address,
+        target: chain.contracts.CredentialRegistry,
+        data: encodeIssueCredential(issued.credentialHash, didHash, issued.schemaId, expiresAt),
+        action: `Issue ${credentialType}`,
       });
 
       // Hashes and identifiers only. The JWT, the claims and the content key are the
@@ -135,13 +145,12 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         schemaId: issued.schemaId,
         cid: pinned.cid,
         expiresAt,
-        transactionId: relayed.transactionId,
         network: chain.network.id,
       });
 
-      res.status(202).json({
-        status: relayed.status,
-        transactionId: relayed.transactionId,
+      // 200, not 202: the credential exists and is pinned, but nothing is anchored until
+      // the issuer signs and the request is forwarded.
+      res.status(200).json({
         credentialHash: issued.credentialHash,
         schemaId: issued.schemaId,
         // Returned exactly once. Neither is stored by this service.
@@ -150,7 +159,8 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         envelopeUri: pinned.uri,
         expiresAt,
         network: toNetworkDto(chain.network),
-        explorerUrl: relayed.hash ? explorerTxUrl(chain.network, relayed.hash) : null,
+        typedData: serializeTypedData(prepared.typedData),
+        summary: prepared.summary,
       });
     }),
   );
@@ -313,7 +323,15 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
       }
 
       const chain = await deps.chain.active();
-      const relayed = await chain.relayer.relayRevoke({ credentialHash, reasonCode });
+
+      const prepared = await prepareForwardedCall({
+        chain,
+        chainId: chain.network.chainId,
+        actor: req.caller?.address as string,
+        target: chain.contracts.CredentialRegistry,
+        data: encodeRevokeCredential(credentialHash, reasonCode),
+        action: `Revoke credential (reason ${reasonCode})`,
+      });
 
       deps.logger.log({
         level: "warn",
@@ -322,17 +340,15 @@ export function createCredentialRouter(deps: CredentialDependencies): Router {
         actor: req.caller?.address,
         credentialHash,
         reasonCode,
-        transactionId: relayed.transactionId,
         network: chain.network.id,
       });
 
-      res.status(202).json({
-        status: relayed.status,
-        transactionId: relayed.transactionId,
+      res.status(200).json({
         credentialHash,
         reasonCode,
         network: toNetworkDto(chain.network),
-        explorerUrl: relayed.hash ? explorerTxUrl(chain.network, relayed.hash) : null,
+        typedData: serializeTypedData(prepared.typedData),
+        summary: prepared.summary,
       });
     }),
   );

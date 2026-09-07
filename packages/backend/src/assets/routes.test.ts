@@ -2,8 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
 
 import { createServer } from "../server";
-import { staticResolver } from "../chain/binding";
-import { HARDHAT } from "../chain/networks";
+import { testChain } from "../chain/testBinding";
 import { MemoryLogger } from "../http/logger";
 import type { AssetDependencies } from "./routes";
 
@@ -61,14 +60,7 @@ function build(options: Harness = {}) {
       }),
       pinJson,
     },
-    chain: staticResolver({
-      network: HARDHAT,
-      relayer: {
-        relayMint,
-        relayIssue: async () => ({ transactionId: "x", status: "pending" as const }),
-        relayRevoke: async () => ({ transactionId: "x", status: "pending" as const }),
-      },
-    }),
+    chain: testChain({ relayMint }),
     events: { eventsForToken: async () => [] },
     assets: { find: async () => null },
     logger,
@@ -137,12 +129,24 @@ describe("POST /assets/mint — authorization", () => {
   });
 
   it("admits a caller the chain does grant MINT_ASSET", async () => {
+    const { app } = build({ caller: MANAGER, permitted: true });
+
+    const res = await mintRequest(app);
+
+    // 200, not 202: the metadata is pinned but nothing is submitted until the requester
+    // signs. A mint attributed to the relayer is exactly what this replaces.
+    expect(res.status).toBe(200);
+  });
+
+  it("returns a request for the requester to sign, rather than submitting one itself", async () => {
     const { app, relayMint } = build({ caller: MANAGER, permitted: true });
 
     const res = await mintRequest(app);
 
-    expect(res.status).toBe(202);
-    expect(relayMint).toHaveBeenCalledOnce();
+    expect(res.body.typedData?.primaryType).toBe("ForwardRequest");
+    expect(res.body.typedData?.message?.from).toBe(MANAGER.address);
+    expect(res.body.tokenURI).toMatch(/^ipfs:\/\//);
+    expect(relayMint).not.toHaveBeenCalled();
   });
 
   it("asks the chain about the caller, not about the relayer", async () => {
@@ -158,14 +162,7 @@ describe("POST /assets/mint — authorization", () => {
           pinFile: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
           pinJson: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
         },
-        chain: staticResolver({
-          network: HARDHAT,
-          relayer: {
-            relayMint,
-            relayIssue: async () => ({ transactionId: "x", status: "pending" as const }),
-            relayRevoke: async () => ({ transactionId: "x", status: "pending" as const }),
-          },
-        }),
+        chain: testChain({ relayMint }),
         events: { eventsForToken: async () => [] },
         assets: { find: async () => null },
         logger,
@@ -268,14 +265,7 @@ describe("POST /assets/mint — validation still applies after the gate", () => 
           pinFile: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
           pinJson: async () => ({ cid: "c", uri: "ipfs://c", gatewayUrl: "g", size: 1 }),
         },
-        chain: staticResolver({
-          network: HARDHAT,
-          relayer: {
-            relayMint,
-            relayIssue: async () => ({ transactionId: "x", status: "pending" as const }),
-            relayRevoke: async () => ({ transactionId: "x", status: "pending" as const }),
-          },
-        }),
+        chain: testChain({ relayMint }),
         events: { eventsForToken: async () => [] },
         assets: { find: async () => null },
         logger,
