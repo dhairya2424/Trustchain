@@ -301,11 +301,8 @@ anchored.
   (`auditEntries` with `entryId`, `actor`, `via`, …) that nothing currently serves. It is
   tested against a fake, and the chain fallback is the path that actually works today. The
   subgraph manifest is Phase 5 work.
-- **`DefenderCredentialRelayer` and `DefenderRelayer` are still untested against real
-  endpoints.** Defender is a hosted service and nobody has credentials for it here. The
-  local relayer stands in for the end-to-end run, so the Defender request shape is reviewed,
-  not exercised. `OnChainCredentialReader` and the audit chain fallback, by contrast, now run
-  against a real chain — see below.
+- **Signing now goes through a self-hosted OpenZeppelin Relayer**, not Defender, which was
+  removed when it entered maintenance mode. See [RELAYER.md](RELAYER.md).
 - **CORS is still not mounted** (carried over from P2.5). The frontend will need it in Phase 3.
 - **The Nginx config remains unexecuted** (carried over from P2.5), including the new
   `/audit/export.csv` path, which streams and should not be buffered by the proxy.
@@ -315,7 +312,8 @@ anchored.
 ```
 CREDENTIAL_PRIVATE_KEY, CREDENTIAL_PUBLIC_KEY, CREDENTIAL_ISSUER_ID
 SUBGRAPH_URL, AUDIT_TRAIL_DEPLOYMENT_BLOCK, AUDIT_MAX_EXPORT_ROWS
-DEFENDER_RELAYER_URL
+RELAYER_URL, RELAYER_ID, RELAYER_API_KEY, RELAYER_SPEED
+POLYGON_AMOY_RPC_URL
 ```
 
 All are in `packages/backend/.env.example`. No new dependencies were added.

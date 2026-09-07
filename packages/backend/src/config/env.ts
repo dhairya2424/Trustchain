@@ -84,26 +84,44 @@ export const envSchema = z.object({
 
   TURNSTILE_SECRET_KEY: z.string().min(1),
 
-  DEFENDER_API_KEY: z.string().optional(),
-  DEFENDER_API_SECRET: z.string().optional(),
-  DEFENDER_RELAYER_URL: z.string().url().optional(),
+  /**
+   * Self-hosted OpenZeppelin Relayer.
+   *
+   * The signing key lives in that service, configured by its own `config.json`, and never
+   * in this process. These three variables are all the application knows about signing:
+   * where the service is, which relayer to use, and the credential that authorises
+   * requesting a transaction. Swapping the local keystore for AWS KMS changes none of
+   * them.
+   *
+   * Optional as a set: when absent, the write routes are simply not mounted, rather than
+   * mounted and failing at the last step.
+   */
+  RELAYER_URL: z.string().url().optional(),
+  RELAYER_ID: z.string().min(1).optional(),
+  RELAYER_API_KEY: z.string().min(1).optional(),
+  RELAYER_SPEED: z.enum(["safeLow", "average", "fast", "fastest"]).default("average"),
 
   /**
-   * Local development substitutes for Defender and Pinata.
+   * Polygon Amoy endpoint.
    *
-   * Both are hosted services, and a system that cannot run end-to-end without a vendor
-   * account cannot be demonstrated or debugged. These let the stack run against a local
-   * chain and filesystem instead. The adapters themselves refuse to construct when
-   * NODE_ENV is "production", and `index.ts` refuses to start if they are configured
-   * there — two independent guards, because arming a local signing key in production is
-   * the single worst configuration mistake available in this codebase.
+   * Kept as its own variable because that is how the deployment scripts and the relayer
+   * service refer to it, and duplicating an RPC URL that carries an API key into a second
+   * variable is how one copy gets rotated and the other does not. When set, it takes
+   * precedence over CHAIN_RPC_URL for chain id 80002.
    */
-  DEV_RELAYER_PRIVATE_KEY: z
-    .string()
-    .regex(/^0x[0-9a-fA-F]{64}$/, "must be a 0x-prefixed 32-byte private key")
-    .optional(),
+  POLYGON_AMOY_RPC_URL: z.string().url().optional(),
+
+  /**
+   * Local filesystem stand-in for IPFS pinning.
+   *
+   * Deliberately independent of the relayer: pinning and signing are unrelated concerns,
+   * and a deployment may reasonably use real Pinata with a local chain, or the reverse.
+   */
   DEV_IPFS_DIR: z.string().min(1).default(".local-ipfs"),
 });
+
+/** Chain id for Polygon Amoy, the only network this build targets. */
+export const POLYGON_AMOY_CHAIN_ID = 80002;
 
 export type Env = z.infer<typeof envSchema>;
 
@@ -150,4 +168,17 @@ export function loadEnv(): Env {
 /** Test seam — drops the memoised value so a fresh environment can be parsed. */
 export function resetEnvCache(): void {
   cached = undefined;
+}
+
+/**
+ * The RPC endpoint to use for the configured chain.
+ *
+ * On Amoy the dedicated variable wins when present, so the endpoint that carries an API
+ * key is configured in exactly one place.
+ */
+export function rpcUrlFor(env: Env): string {
+  if (env.CHAIN_ID === POLYGON_AMOY_CHAIN_ID && env.POLYGON_AMOY_RPC_URL) {
+    return env.POLYGON_AMOY_RPC_URL;
+  }
+  return env.CHAIN_RPC_URL;
 }

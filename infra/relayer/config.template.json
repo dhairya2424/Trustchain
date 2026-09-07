@@ -1,0 +1,61 @@
+{
+  "_comment": [
+    "Template for the OpenZeppelin Relayer v1.5.x configuration.",
+    "",
+    "This file is COMMITTED and contains placeholders only. tools/gen-relayer-config.mjs",
+    "substitutes the real values and writes config/config.json, which is gitignored.",
+    "",
+    "The indirection exists because the relayer's config.json has no environment-variable",
+    "substitution for RPC URLs, and a Polygon Amoy endpoint from most providers carries an",
+    "API key. Committing this file with the key inlined would put a live credential in git",
+    "history, so the generated file is the one the service reads and the one git ignores.",
+    "",
+    "The signer below is the ONLY thing that changes when moving to AWS KMS: replace the",
+    "`local` signer with an `aws_kms` one and restart the container. No application code,",
+    "no interface, and no test is aware of which signer is in use."
+  ],
+
+  "networks": [
+    {
+      "type": "evm",
+      "network": "amoy",
+      "chain_id": 80002,
+      "symbol": "POL",
+      "is_testnet": true,
+      "required_confirmations": 1,
+      "tags": ["polygon", "testnet"],
+      "rpc_urls": ["${AMOY_RPC_URL}"]
+    }
+  ],
+
+  "signers": [
+    {
+      "id": "trustchain-local-signer",
+      "type": "local",
+      "config": {
+        "path": "config/keys/local-signer.json",
+        "passphrase": {
+          "type": "env",
+          "value": "KEYSTORE_PASSPHRASE"
+        }
+      }
+    }
+  ],
+
+  "relayers": [
+    {
+      "id": "trustchain-amoy",
+      "name": "TrustChain Amoy",
+      "network": "amoy",
+      "network_type": "evm",
+      "paused": false,
+      "signer_id": "trustchain-local-signer",
+      "policies": {
+        "eip1559_pricing": true,
+        "min_balance": 0
+      }
+    }
+  ],
+
+  "notifications": []
+}

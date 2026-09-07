@@ -26,7 +26,7 @@ ADMIN_TRANSFER_DELAY_SECONDS=259200
 ```
 
 The deployer key is read from the environment by `hardhat.config.ts` and never written to
-an artifact or a deployment record. For production, prefer a Defender Relayer or a KMS
+an artifact or a deployment record. For production, prefer a KMS-backed signer behind the
 signer over a raw key — the scripts here need only a signer, not a specific kind.
 
 ## Step 0 — Preflight
@@ -124,29 +124,46 @@ been dropped from the allowlist. **This is the step that turns "admin is a multi
 a claim into a verified fact.** Run it again periodically — a role granted by mistake
 later will show up here.
 
-## Step 8 — Monitoring
+## Step 8 — Wire the relayer
+
+The API never signs. Transactions go through a self-hosted OpenZeppelin Relayer, whose
+signer address must hold the on-chain permissions for whatever it is asked to submit.
 
 ```bash
-npx hardhat run scripts/defenderRegister.ts --network amoy
+node tools/gen-relayer-secrets.mjs      # passphrase, API key, webhook key — not printed
+docker run --rm --env-file infra/relayer/.env   -v "$PWD/infra/relayer:/out" rust:1-slim bash /out/create-key.sh
+node tools/gen-relayer-config.mjs       # renders config.json from the template
+REDIS_PORT=6380 docker compose up -d redis relayer
 ```
 
-Renders `infra/defender/generated/amoy.monitors.json` with real addresses substituted, and
-refuses to emit anything containing an unresolved placeholder — a monitor pointed at a
-placeholder watches nothing and stays silent forever.
+Then grant the relayer's signer address `MANAGER` (which carries `PERM_MINT_ASSET` and
+`PERM_ISSUE_CREDENTIAL`) and fund it with POL. Full detail, including the AWS KMS
+migration, is in [RELAYER.md](RELAYER.md).
 
-Then, in Defender:
+Note the authorization subtlety that applies from here on: because the relayer signs with
+its own key, the contract's permission modifier checks the **relayer's** authority, not the
+caller's. The API enforces the caller's own on-chain permission separately, and must — see
+[EXIT_CHECK.md](EXIT_CHECK.md) §3.
 
-1. **Create an Action** from `infra/defender/action-alert.js`.
-2. Add the secret `ALERT_WEBHOOK_URL` to that Action. The code throws if it is missing,
-   rather than silently dropping an alert about a role change.
-3. **Create the Monitors** from the generated file, each notifying that Action:
-   - access-control changes on RoleAccessControl (`RoleGranted`, `RoleRevoked`,
-     `PermissionUpdated`, `DefaultAdminTransferScheduled`)
-   - asset issuance on AssetRegistry (`AssetMinted`)
-   - allowlist changes on AuditTrail (`TrustedCallerUpdated`) — removing a writer creates
-     an audit blind spot
-4. **Fire a test event and confirm the alert arrives.** An alerting path nobody has ever
-   seen fire is not monitoring.
+## Step 9 — Monitoring
+
+**Not yet implemented.** The previous design used OpenZeppelin Defender Monitors, which
+were removed along with the rest of Defender when it entered maintenance mode; nothing has
+replaced them yet.
+
+What still needs building, and why each matters:
+
+- access-control changes on `RoleAccessControl` (`RoleGranted`, `RoleRevoked`,
+  `PermissionUpdated`, `DefaultAdminTransferScheduled`) — a silent role grant is the single
+  most dangerous unobserved event in this system
+- asset issuance on `AssetRegistry` (`AssetMinted`)
+- allowlist changes on `AuditTrail` (`TrustedCallerUpdated`) — removing a writer creates an
+  audit blind spot
+
+Every one of these is already an on-chain event, and the audit indexer already reads them,
+so the alerting layer can be built on the existing `GET /audit` path rather than on a
+vendor. Tracked as Phase 5 work. **An alerting path nobody has ever seen fire is not
+monitoring**, so whatever replaces it needs a test event before it counts.
 
 ## If something goes wrong
 

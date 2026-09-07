@@ -34,9 +34,8 @@ flowchart TD
 
     subgraph L6["6 - CHAIN OPS"]
         RPC["Alchemy RPC<br/>Polygon Amoy / local Hardhat"]
-        REL["Defender Relayer<br/>keys never in app"]
+        REL["OpenZeppelin Relayer v1.5<br/>separate service<br/>local encrypted signer<br/>keys never in app"]
         SAFE["Safe 2-of-3 Multisig<br/>owns DEFAULT_ADMIN"]
-        SEN["Defender Sentinel<br/>alerts on mint / role grant"]
     end
 
     subgraph L7["7 - SMART CONTRACTS — Solidity 0.8.24, OpenZeppelin v5"]
@@ -92,7 +91,6 @@ flowchart TD
     CRG --> ATR
 
     ATR -->|"events"| SUB
-    L7 --> SEN
     SAFE -->|"holds admin key"| RAC
 
     CI --> SEC

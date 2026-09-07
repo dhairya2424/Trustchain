@@ -30,14 +30,6 @@ const deploymentPath = path.join(
   "localhost.json",
 );
 
-/**
- * Hardhat's second account. Its private key is printed in the node's startup banner and
- * is identical on every Hardhat installation on earth, so it is public knowledge rather
- * than a secret. The seed script grants it MANAGER, which is what the relayer needs to
- * mint and issue. It is referenced here by name so nobody mistakes it for a real key.
- */
-const HARDHAT_ACCOUNT_1 = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"; // secrets-scan:allow public Hardhat test key, printed by every node banner
-
 /** Cloudflare's documented always-passes test secret. Not a credential. */
 const TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA";
 
@@ -141,9 +133,15 @@ function main() {
     "AUTH_RATE_LIMIT_WINDOW_SECONDS=60",
     "AUTH_FAILURE_THRESHOLD=80",
     "",
-    "# Local substitutes for Defender and Pinata. Both adapters refuse to construct when",
-    "# NODE_ENV=production, and the server refuses to boot if this key is set there.",
-    `DEV_RELAYER_PRIVATE_KEY=${HARDHAT_ACCOUNT_1}`,
+    "# Self-hosted OpenZeppelin Relayer. The signing key lives in that service, never here.",
+    "# RELAYER_API_KEY is the API_KEY from infra/relayer/.env — fill it in after generating.",
+    "RELAYER_URL=http://localhost:8081",
+    "RELAYER_ID=trustchain-amoy",
+    "RELAYER_API_KEY=",
+    "RELAYER_SPEED=average",
+    "",
+    "# Filesystem stand-in for IPFS. Independent of the relayer: set PINATA_JWT to a real",
+    "# credential to pin for real while still signing against a local chain.",
     "DEV_IPFS_DIR=.local-ipfs",
     "",
   ];

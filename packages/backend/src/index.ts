@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import { RateLimiterRedis } from "rate-limiter-flexible";
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
 
-import { EnvValidationError, loadEnv, type Env } from "./config/env";
+import { EnvValidationError, loadEnv, rpcUrlFor, type Env } from "./config/env";
 import { createServer } from "./server";
 import { createPino, httpLogger, PinoLogger } from "./http/pinoLogger";
 import { FailureTracker } from "./auth/failureTracker";
@@ -18,18 +18,13 @@ import { CursorCodec } from "./audit/cursor";
 import { FallbackAuditSource, OnChainAuditSource, SubgraphAuditSource } from "./audit/events";
 import type { AuditDependencies } from "./audit/routes";
 import { PinataClient, type IpfsPinner } from "./assets/pinata";
-import { DefenderRelayer, type TransactionRelayer } from "./assets/relayer";
 import { StubScanner } from "./assets/malware";
 import type { AssetDependencies } from "./assets/routes";
+import { OpenZeppelinRelayerClient } from "./chain/relayerClient";
 import { CredentialIssuer } from "./credentials/vc";
-import {
-  DefenderCredentialRelayer,
-  OnChainCredentialReader,
-  type CredentialRelayer,
-} from "./credentials/registry";
+import { OnChainCredentialReader } from "./credentials/registry";
 import type { CredentialDependencies } from "./credentials/routes";
 import { LocalPinner } from "./dev/localPinner";
-import { LocalRelayer } from "./dev/localRelayer";
 import type { CallerResolver } from "./http/authorize";
 import type { Logger } from "./http/logger";
 
@@ -45,9 +40,8 @@ function buildAuth(env: Env): Platform {
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
   const store = new RedisStore(redis);
 
-  const publicClient = createPublicClient({
-    transport: http(env.CHAIN_RPC_URL),
-  }) as PublicClient;
+  const rpcUrl = rpcUrlFor(env);
+  const publicClient = createPublicClient({ transport: http(rpcUrl) }) as PublicClient;
 
   const tokens = new TokenService(store, {
     privateKeyPem: env.JWT_PRIVATE_KEY,
@@ -61,7 +55,7 @@ function buildAuth(env: Env): Platform {
       roleAccessControl: env.ROLE_ACCESS_CONTROL_ADDRESS as Address,
       didRegistry: env.DID_REGISTRY_ADDRESS as Address,
     },
-    env.CHAIN_RPC_URL,
+    rpcUrl,
     publicClient,
   );
 
@@ -151,96 +145,56 @@ function buildAudit(
 }
 
 /**
- * Chooses between the hosted services and the local development substitutes.
+ * Where transactions are signed.
  *
- * Production must use Defender and Pinata. The guard here is belt-and-braces with the one
- * inside each adapter: arming a local signing key in production is the worst configuration
- * mistake this codebase makes available, so it is refused twice, and refused loudly at
- * boot rather than at the first mint.
+ * Always the self-hosted OpenZeppelin Relayer. This process holds an API credential that
+ * authorises *requesting* a transaction; the signing key lives in that service and is
+ * declared by its own config.json. Migrating the local encrypted keystore to AWS KMS is a
+ * change to that file — nothing here, and nothing in the routes, is aware of it.
+ *
+ * Returns undefined when the relayer is not configured, in which case the write routes are
+ * not mounted at all. Mounting them without a relayer would give an endpoint that
+ * authenticates, authorises, signs a credential and then fails at the last step — having
+ * already handed the caller a JWT for a credential that was never anchored.
  */
-interface Outbound {
-  relayer: TransactionRelayer & CredentialRelayer;
-  pinner: IpfsPinner;
-  mode: "defender" | "local";
-}
+function buildRelayer(env: Env): OpenZeppelinRelayerClient | undefined {
+  if (!env.RELAYER_URL || !env.RELAYER_ID || !env.RELAYER_API_KEY) return undefined;
 
-function buildOutbound(env: Env): Outbound | undefined {
-  const hasDefender = Boolean(
-    env.DEFENDER_API_KEY && env.DEFENDER_API_SECRET && env.DEFENDER_RELAYER_URL,
-  );
-
-  if (env.NODE_ENV === "production") {
-    if (env.DEV_RELAYER_PRIVATE_KEY) {
-      throw new Error(
-        "DEV_RELAYER_PRIVATE_KEY is set with NODE_ENV=production. The local relayer holds " +
-          "a signing key in process memory and must never run in production. Remove it and " +
-          "configure Defender.",
-      );
-    }
-    if (!hasDefender) return undefined;
-  }
-
-  if (hasDefender) {
-    return {
-      mode: "defender",
-      relayer: new CombinedDefenderRelayer(env),
-      pinner: new PinataClient({ jwt: env.PINATA_JWT, gateway: env.PINATA_GATEWAY }),
-    };
-  }
-
-  if (!env.DEV_RELAYER_PRIVATE_KEY) return undefined;
-
-  return {
-    mode: "local",
-    relayer: new LocalRelayer({
-      rpcUrl: env.CHAIN_RPC_URL,
-      privateKey: env.DEV_RELAYER_PRIVATE_KEY,
-      assetRegistryAddress: env.ASSET_REGISTRY_ADDRESS,
-      credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
-    }),
-    pinner: new LocalPinner({ directory: env.DEV_IPFS_DIR, gateway: env.PINATA_GATEWAY }),
-  };
+  return new OpenZeppelinRelayerClient({
+    baseUrl: env.RELAYER_URL,
+    relayerId: env.RELAYER_ID,
+    apiKey: env.RELAYER_API_KEY,
+    assetRegistryAddress: env.ASSET_REGISTRY_ADDRESS,
+    credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
+    speed: env.RELAYER_SPEED,
+  });
 }
 
 /**
- * Adapts the two Defender relayers to the single interface the routers want.
+ * Where content is pinned.
  *
- * The asset and credential relayers are separate classes because they target different
- * contracts; the composition root is the right place to join them rather than making
- * either one know about the other.
+ * Chosen independently of the relayer, because pinning and signing are unrelated concerns:
+ * a deployment may legitimately pin to real Pinata while signing against a local chain, or
+ * the reverse. Bundling the two decisions — as an earlier version of this file did — makes
+ * one impossible to configure without the other.
+ *
+ * Pinata when a real credential is present; otherwise the local filesystem stand-in, which
+ * refuses to construct under NODE_ENV=production.
  */
-class CombinedDefenderRelayer implements TransactionRelayer, CredentialRelayer {
-  private readonly assets: DefenderRelayer;
-  private readonly credentials: DefenderCredentialRelayer;
+function buildPinner(env: Env, logger: Logger): IpfsPinner {
+  const configured = env.PINATA_JWT && !env.PINATA_JWT.startsWith("unused");
 
-  constructor(env: Env) {
-    const shared = {
-      apiKey: env.DEFENDER_API_KEY as string,
-      apiSecret: env.DEFENDER_API_SECRET as string,
-      relayerUrl: env.DEFENDER_RELAYER_URL as string,
-    };
-
-    this.assets = new DefenderRelayer({
-      ...shared,
-      assetRegistryAddress: env.ASSET_REGISTRY_ADDRESS,
-    });
-    this.credentials = new DefenderCredentialRelayer({
-      ...shared,
-      credentialRegistryAddress: env.CREDENTIAL_REGISTRY_ADDRESS,
-    });
+  if (configured) {
+    return new PinataClient({ jwt: env.PINATA_JWT, gateway: env.PINATA_GATEWAY });
   }
 
-  relayMint(request: Parameters<TransactionRelayer["relayMint"]>[0]) {
-    return this.assets.relayMint(request);
-  }
+  logger.log({
+    level: "warn",
+    msg: "ipfs.local_pinner_active",
+    detail: "content is stored on the local filesystem and the CIDs are not real IPFS CIDs",
+  });
 
-  relayIssue(tx: Parameters<CredentialRelayer["relayIssue"]>[0]) {
-    return this.credentials.relayIssue(tx);
-  }
-
-  relayRevoke(tx: Parameters<CredentialRelayer["relayRevoke"]>[0]) {
-    return this.credentials.relayRevoke(tx);
-  }
+  return new LocalPinner({ directory: env.DEV_IPFS_DIR, gateway: env.PINATA_GATEWAY });
 }
 
 /**
@@ -256,9 +210,10 @@ function buildCredentials(
   platform: Platform,
   logger: Logger,
   resolveCaller: CallerResolver,
-  outbound: Outbound | undefined,
+  relayer: OpenZeppelinRelayerClient | undefined,
+  pinner: IpfsPinner,
 ): CredentialDependencies | undefined {
-  if (!outbound) return undefined;
+  if (!relayer) return undefined;
 
   return {
     issuer: new CredentialIssuer(
@@ -269,8 +224,8 @@ function buildCredentials(
       platform.publicClient,
       env.CREDENTIAL_REGISTRY_ADDRESS as Address,
     ),
-    relayer: outbound.relayer,
-    pinner: outbound.pinner,
+    relayer,
+    pinner,
     logger,
     resolveCaller,
     permissions: platform.roles,
@@ -290,14 +245,15 @@ function buildAssets(
   platform: Platform,
   logger: Logger,
   resolveCaller: CallerResolver,
-  outbound: Outbound | undefined,
+  relayer: OpenZeppelinRelayerClient | undefined,
+  pinner: IpfsPinner,
 ): AssetDependencies | undefined {
-  if (!outbound) return undefined;
+  if (!relayer) return undefined;
 
   return {
     scanner: new StubScanner(),
-    pinner: outbound.pinner,
-    relayer: outbound.relayer,
+    pinner,
+    relayer,
     events: { eventsForToken: async () => [] },
     assets: { find: async () => null },
     logger,
@@ -334,25 +290,17 @@ function main(): void {
   const logger = new PinoLogger(pino);
 
   const resolveCaller = createSessionResolver({ tokens: platform.tokens, logger });
+  const relayer = buildRelayer(env);
+  const pinner = buildPinner(env, logger);
+  const credentials = buildCredentials(env, platform, logger, resolveCaller, relayer, pinner);
+  const assets = buildAssets(env, platform, logger, resolveCaller, relayer, pinner);
 
-  const outbound = buildOutbound(env);
-  const credentials = buildCredentials(env, platform, logger, resolveCaller, outbound);
-  const assets = buildAssets(env, platform, logger, resolveCaller, outbound);
-
-  if (!outbound) {
+  if (!relayer) {
     logger.log({
       level: "warn",
-      msg: "outbound.not_configured",
+      msg: "relayer.not_configured",
       detail: "asset and credential write routes are not mounted",
-      reason:
-        "configure DEFENDER_API_KEY, DEFENDER_API_SECRET and DEFENDER_RELAYER_URL, " +
-        "or DEV_RELAYER_PRIVATE_KEY for local development",
-    });
-  } else if (outbound.mode === "local") {
-    logger.log({
-      level: "warn",
-      msg: "outbound.local_adapters_active",
-      detail: "signing locally and storing content on the filesystem; NOT suitable for production",
+      reason: "set RELAYER_URL, RELAYER_ID and RELAYER_API_KEY",
     });
   }
 

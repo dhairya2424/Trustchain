@@ -115,10 +115,10 @@ Nothing here changed it — disabling a service is the operator's call, not the 
 Two hosted services have no local equivalent, and a system that cannot run without a vendor
 account cannot be demonstrated or debugged. So:
 
-| Production            | Local substitute                                           | Guard                                                                                                 |
-| --------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| OpenZeppelin Defender | `src/dev/localRelayer.ts` — signs with a Hardhat key       | throws if `NODE_ENV=production`; `index.ts` refuses to boot if `DEV_RELAYER_PRIVATE_KEY` is set there |
-| Pinata / IPFS         | `src/dev/localPinner.ts` — content-addressed files on disk | throws if `NODE_ENV=production`                                                                       |
+| Production                         | Local substitute                                           | Guard                                         |
+| ---------------------------------- | ---------------------------------------------------------- | --------------------------------------------- |
+| OpenZeppelin Relayer (self-hosted) | none — the relayer service is now used for local runs too  | the service holds the key; the API never does |
+| Pinata / IPFS                      | `src/dev/localPinner.ts` — content-addressed files on disk | throws if `NODE_ENV=production`               |
 
 Both live under `src/dev/` so their presence in an import graph is visible, and both take
 their configuration explicitly rather than reading `process.env` themselves, so no
@@ -132,8 +132,9 @@ one for a real pin.
 
 ## 6. What the run still does not prove
 
-- **Defender is not exercised.** The local relayer stands in, so the Defender HTTP request
-  shape remains reviewed rather than run.
+- **This run predates the relayer migration.** It was executed against the since-removed
+  in-process local signer. The flow and the controls it proves are unchanged, but the
+  signing path is now the self-hosted OpenZeppelin Relayer — see [RELAYER.md](RELAYER.md).
 - **No subgraph.** The fast path in `SubgraphAuditSource` is tested only against a fake; the
   run exercises the chain fallback.
 - **Postgres is up but barely used.** The profile repository is not wired into `index.ts`,

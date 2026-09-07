@@ -53,6 +53,42 @@ services:
       timeout: 5s
       retries: 10
 
+  # Self-hosted OpenZeppelin Relayer (v1.5.x), pinned by digest-bearing tag.
+  #
+  # This is where transactions are signed. The backend holds only an API credential; the
+  # signing key lives in this container's mounted keystore and is decrypted with
+  # KEYSTORE_PASSPHRASE from infra/relayer/.env. Neither is ever in git.
+  #
+  # Migrating to AWS KMS means editing infra/relayer/config.template.json to declare an
+  # aws_kms signer instead of the local one, regenerating config, and restarting THIS
+  # service. The backend does not change.
+  #
+  # Deliberately NOT exposed beyond the host loopback: the relayer's own documentation
+  # says it "is not meant to be directly exposed to the public internet".
+  relayer:
+    image: openzeppelin/openzeppelin-relayer:v1.5.0
+    container_name: trustchain-relayer
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - infra/relayer/.env
+    environment:
+      CONFIG_DIR: /app/config
+      CONFIG_FILE_NAME: config.json
+    volumes:
+      # Read-only: the service needs to read its configuration and key, never rewrite them.
+      - ./infra/relayer/config:/app/config:ro
+    ports:
+      # Loopback only. 8081 because 8080 is the local IPFS gateway placeholder.
+      - "127.0.0.1:${RELAYER_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres-data:
   redis-data:

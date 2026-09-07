@@ -37,7 +37,7 @@ flowchart TD
     MG3 -->|"No"| REJ2["Rejected at API boundary"]
     REJ2 --> END2(["Upload refused"])
     MG3 -->|"Yes"| MG4["Strip EXIF, random filename<br/>pin metadata to IPFS"]
-    MG4 --> MG5["mint to ownerDID + tokenURI<br/>via Defender relayer"]
+    MG4 --> MG5["mint to ownerDID + tokenURI<br/>via OpenZeppelin Relayer"]
     MG5 --> GATE
 
     MGR1 --> MG6["Allocate / transfer asset<br/>to another DID"]

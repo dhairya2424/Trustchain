@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { detectType, inspectUpload, MAX_UPLOAD_BYTES, safeDisplayName } from "./upload";
 import { stripMetadata } from "./metadata";
 import { PinataClient, PinningError } from "./pinata";
-import { DefenderRelayer, RelayerError } from "./relayer";
 import { toAssetDto, toOwnProfileDto, toPublicProfileDto, type AssetRecord } from "./serializers";
 import {
   buildProvenance,
@@ -265,52 +264,6 @@ describe("Pinata pinning", () => {
 
     await expect(client.pinJson({}, "n")).rejects.toThrowError(PinningError);
     await expect(client.pinJson({}, "n")).rejects.not.toThrowError(/super-secret-jwt/);
-  });
-});
-
-describe("Defender relayer", () => {
-  it("relays a mint without ever holding a signing key", async () => {
-    let body: unknown;
-    const relayer = new DefenderRelayer(
-      {
-        apiKey: "k",
-        apiSecret: "s",
-        relayerUrl: "https://relay.example/tx",
-        assetRegistryAddress: "0xasset",
-      },
-      async (_url, init) => {
-        body = JSON.parse(String(init?.body));
-        return new Response(JSON.stringify({ transactionId: "tx-1", status: "pending" }), {
-          status: 200,
-        });
-      },
-    );
-
-    const result = await relayer.relayMint({
-      toDID: "0xdid",
-      tokenURI: "ipfs://meta",
-      soulbound: false,
-    });
-
-    expect(result).toEqual({ transactionId: "tx-1", status: "pending" });
-    // No private key, no signature, no raw calldata — only an intent.
-    expect(JSON.stringify(body)).not.toMatch(/privateKey|signature|0x[0-9a-f]{64}/i);
-  });
-
-  it("surfaces a rejection without echoing the request headers", async () => {
-    const relayer = new DefenderRelayer(
-      {
-        apiKey: "k",
-        apiSecret: "super-secret",
-        relayerUrl: "https://relay.example/tx",
-        assetRegistryAddress: "0xasset",
-      },
-      async () => new Response("bad credential super-secret", { status: 403 }),
-    );
-
-    await expect(
-      relayer.relayMint({ toDID: "0xd", tokenURI: "ipfs://m", soulbound: false }),
-    ).rejects.toThrowError(RelayerError);
   });
 });
 

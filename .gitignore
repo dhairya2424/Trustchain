@@ -44,3 +44,10 @@ reports/
 # hashes that trip the secret scanner as 32-byte hex.
 .local-ipfs/
 packages/contracts/deployments/*.seed.json
+
+# OpenZeppelin Relayer local secrets and signer keystore. The passphrase in .env decrypts
+# the keystore, so neither may ever be committed; config.json holds placeholders only.
+infra/relayer/.env
+infra/relayer/config/keys/
+infra/relayer/config/config.json
+.relayer-build/
