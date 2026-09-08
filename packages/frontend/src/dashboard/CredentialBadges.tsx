@@ -4,7 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMotion } from "@/motion/MotionProvider";
 import { truncateAddress } from "@/lib/utils";
-import type { AuditEvent } from "@/api/queries";
+import type { AuditEntry } from "@/api/queries";
 
 /**
  * Credentials this identity issued or had revoked, derived from the audit trail.
@@ -20,8 +20,8 @@ import type { AuditEvent } from "@/api/queries";
  */
 
 export interface CredentialBadgesProps {
-  issued: AuditEvent[] | undefined;
-  revoked: AuditEvent[] | undefined;
+  issued: AuditEntry[] | undefined;
+  revoked: AuditEntry[] | undefined;
   isLoading: boolean;
   blocked?: React.ReactNode;
 }
@@ -51,16 +51,14 @@ export function CredentialBadges({ issued, revoked, isLoading, blocked }: Creden
     );
   }
 
-  const revokedHashes = new Set(
-    (revoked ?? []).map((event) => event.refHash?.toLowerCase()).filter(Boolean),
-  );
+  const revokedHashes = new Set((revoked ?? []).map((event) => event.refHash.toLowerCase()));
 
   return (
     <div className="flex flex-wrap gap-3" data-testid="credential-badges">
       {issued.map((credential, index) => {
         // The later fact wins. Showing a revoked credential as valid because its issuance
         // came first would be the worst possible error on this screen.
-        const isRevoked = revokedHashes.has(credential.refHash?.toLowerCase() ?? "");
+        const isRevoked = revokedHashes.has(credential.refHash.toLowerCase());
 
         return (
           <fm.div
@@ -109,11 +107,11 @@ export function CredentialBadges({ issued, revoked, isLoading, blocked }: Creden
             </span>
 
             <span className="font-mono text-[12px] text-fg-muted" title={credential.refHash}>
-              {credential.refHash ? truncateAddress(credential.refHash) : "—"}
+              {truncateAddress(credential.refHash)}
             </span>
 
             <span className="font-mono text-[11px] text-fg-faint">
-              {typeof credential.blockNumber === "number" ? `block ${credential.blockNumber}` : ""}
+              block {credential.blockNumber}
             </span>
           </fm.div>
         );

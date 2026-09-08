@@ -2,7 +2,7 @@ import { motion as fm } from "framer-motion";
 import { useMemo } from "react";
 
 import { ApiError } from "@/api/client";
-import { useActivity, useSession, type AuditEvent } from "@/api/queries";
+import { useActivity, useSession, type AuditEntry } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { NetworkBadge } from "@/components/NetworkBadge";
@@ -38,9 +38,9 @@ export function Dashboard() {
   const address = session.data?.address;
 
   const activity = useActivity(address);
-  const events = activity.data?.events;
+  const entries = activity.data?.entries;
 
-  const { mints, issued, revoked } = useMemo(() => partition(events), [events]);
+  const { mints, issued, revoked } = useMemo(() => partition(entries), [entries]);
 
   // Not signed in is the ordinary first state, not an error.
   if (session.isError && session.error.isUnauthenticated) {
@@ -167,7 +167,7 @@ export function Dashboard() {
         </div>
 
         <div className="mt-4 overflow-hidden rounded-lg border border-line bg-surface">
-          <ActivityFeed events={events} isLoading={activity.isLoading} error={auditError} />
+          <ActivityFeed entries={entries} isLoading={activity.isLoading} error={auditError} />
         </div>
       </section>
     </section>
@@ -175,12 +175,12 @@ export function Dashboard() {
 }
 
 /** Splits one audit page into the three views this page needs. */
-function partition(events: AuditEvent[] | undefined) {
-  const mints: AuditEvent[] = [];
-  const issued: AuditEvent[] = [];
-  const revoked: AuditEvent[] = [];
+function partition(entries: AuditEntry[] | undefined) {
+  const mints: AuditEntry[] = [];
+  const issued: AuditEntry[] = [];
+  const revoked: AuditEntry[] = [];
 
-  for (const event of events ?? []) {
+  for (const event of entries ?? []) {
     if (event.action === "ASSET_MINTED") mints.push(event);
     else if (event.action === "CREDENTIAL_ISSUED") issued.push(event);
     else if (event.action === "CREDENTIAL_REVOKED") revoked.push(event);

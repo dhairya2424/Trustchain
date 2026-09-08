@@ -3,7 +3,7 @@ import { AnimatePresence, motion as fm } from "framer-motion";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
-import { actionLabel, type AuditEvent } from "@/api/queries";
+import { actionLabel, type AuditEntry } from "@/api/queries";
 import { ApiError } from "@/api/client";
 import { useMotion } from "@/motion/MotionProvider";
 import { truncateAddress } from "@/lib/utils";
@@ -12,10 +12,11 @@ import { truncateAddress } from "@/lib/utils";
  * The user's own on-chain activity, newest first.
  *
  * Every row is a real audit entry. The two addresses shown are the point of the whole
- * actor-attribution work: `actor` is the identity that requested the action and `via` is
- * the account that submitted the transaction. When they differ, a relayer paid the gas —
+ * actor-attribution work: `actor` is the identity that requested the action and `executor`
+ * is the account that submitted the transaction. When they differ, a relayer paid the gas —
  * and saying so plainly is more honest than showing one address and letting the reader
- * assume it did everything.
+ * assume it did everything. (`via`, a third field, is neither: it is the system contract
+ * that wrote the entry.)
  *
  * New entries slide in from the right. `AnimatePresence` keyed on entryId means only
  * genuinely new rows animate; a poll that returns the same page moves nothing, which is
@@ -23,17 +24,17 @@ import { truncateAddress } from "@/lib/utils";
  */
 
 export interface ActivityFeedProps {
-  events: AuditEvent[] | undefined;
+  entries: AuditEntry[] | undefined;
   isLoading: boolean;
   error: ApiError | null;
 }
 
-export function ActivityFeed({ events, isLoading, error }: ActivityFeedProps) {
+export function ActivityFeed({ entries, isLoading, error }: ActivityFeedProps) {
   const motion = useMotion();
 
   if (error) return <ActivityError error={error} />;
 
-  if (isLoading && !events) {
+  if (isLoading && !entries) {
     return (
       <div className="space-y-px" data-testid="activity-loading">
         {[0, 1, 2, 3].map((row) => (
@@ -47,7 +48,7 @@ export function ActivityFeed({ events, isLoading, error }: ActivityFeedProps) {
     );
   }
 
-  if (!events || events.length === 0) {
+  if (!entries || entries.length === 0) {
     return (
       <EmptyState
         illustration="activity"
@@ -60,7 +61,7 @@ export function ActivityFeed({ events, isLoading, error }: ActivityFeedProps) {
   return (
     <ul data-testid="activity-feed">
       <AnimatePresence initial={false}>
-        {events.map((event) => (
+        {entries.map((event) => (
           <fm.li
             key={event.entryId}
             layout={!motion.reduced}
@@ -73,30 +74,32 @@ export function ActivityFeed({ events, isLoading, error }: ActivityFeedProps) {
           >
             <span className="text-[14px] font-medium text-fg">{actionLabel(event.action)}</span>
 
-            <span className="font-mono text-[12px] text-fg-muted" title={event.actor}>
-              by {truncateAddress(event.actor)}
+            <span
+              className="font-mono text-[12px] text-fg-muted"
+              title={event.actor ?? "no actor recorded"}
+            >
+              by {event.actor ? truncateAddress(event.actor) : "unattributed"}
             </span>
 
-            {event.via && event.via.toLowerCase() !== event.actor.toLowerCase() && (
-              // The distinction the audit trail exists to preserve.
-              <span className="font-mono text-[12px] text-fg-faint" title={event.via}>
-                submitted via {truncateAddress(event.via)}
+            {event.executor && event.executor.toLowerCase() !== event.actor?.toLowerCase() && (
+              // The distinction the audit trail exists to preserve: who asked, and who paid
+              // the gas to submit it. `via` is neither — it is the system contract that
+              // recorded the entry.
+              <span className="font-mono text-[12px] text-fg-faint" title={event.executor}>
+                submitted by {truncateAddress(event.executor)}
               </span>
             )}
 
             <time
               className="ml-auto font-mono text-[12px] tabular text-fg-faint"
-              dateTime={event.timestamp}
+              dateTime={event.occurredAt}
             >
-              {formatWhen(event.timestamp)}
+              {formatWhen(event.occurredAt)}
             </time>
 
-            {typeof event.blockNumber === "number" && (
-              <span className="w-full font-mono text-[11.5px] text-fg-faint">
-                block {event.blockNumber}
-                {event.transactionHash ? ` · ${truncateAddress(event.transactionHash)}` : ""}
-              </span>
-            )}
+            <span className="w-full font-mono text-[11.5px] text-fg-faint">
+              block {event.blockNumber} · {truncateAddress(event.transactionHash)}
+            </span>
           </fm.li>
         ))}
       </AnimatePresence>

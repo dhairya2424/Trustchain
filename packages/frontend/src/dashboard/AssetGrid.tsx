@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
 import { useMotion } from "@/motion/MotionProvider";
 import { truncateAddress } from "@/lib/utils";
-import type { AuditEvent } from "@/api/queries";
+import type { AuditEntry } from "@/api/queries";
 
 /**
  * Assets this identity minted, derived from the audit trail.
@@ -25,7 +25,7 @@ import type { AuditEvent } from "@/api/queries";
  */
 
 export interface AssetGridProps {
-  mints: AuditEvent[] | undefined;
+  mints: AuditEntry[] | undefined;
   isLoading: boolean;
   /** Rendered when the caller cannot read the audit trail at all. */
   blocked?: React.ReactNode;
@@ -77,13 +77,10 @@ export function AssetGrid({ mints, isLoading, blocked }: AssetGridProps) {
           <AssetArtwork />
 
           <div className="mt-4 space-y-1.5">
-            <p className="font-mono text-[12px] text-fg-faint">
-              {mint.refHash ? truncateAddress(mint.refHash) : "—"}
-            </p>
+            <p className="font-mono text-[12px] text-fg-faint">{truncateAddress(mint.refHash)}</p>
             <p className="text-[14px] font-medium">Minted asset</p>
             <p className="font-mono text-[11.5px] text-fg-faint">
-              {typeof mint.blockNumber === "number" ? `block ${mint.blockNumber}` : ""}
-              {mint.transactionHash ? ` · ${truncateAddress(mint.transactionHash)}` : ""}
+              block {mint.blockNumber} · {truncateAddress(mint.transactionHash)}
             </p>
           </div>
         </fm.article>

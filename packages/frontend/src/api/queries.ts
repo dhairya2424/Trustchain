@@ -23,21 +23,36 @@ export interface Session {
   roles: readonly string[];
 }
 
-export interface AuditEvent {
-  entryId: string;
-  didHash: string;
+/**
+ * One audit entry, exactly as `AuditEntryDto` defines it in
+ * `packages/backend/src/audit/serializers.ts`.
+ *
+ * Worth naming the two address fields carefully, because they are easy to swap and the
+ * whole actor-attribution design rests on the distinction:
+ *
+ *   - `actor` is the identity that REQUESTED the action, proven on-chain through ERC-2771.
+ *     Null only where the source could not supply it, which for a chain read means the
+ *     entry predates attribution — not that the action was anonymous.
+ *   - `executor` is the account that SUBMITTED the transaction: the relayer that paid gas.
+ *   - `via` is neither. It is the system contract that recorded the entry.
+ */
+export interface AuditEntry {
+  entryId: number;
   action: string;
-  actor: string;
-  /** The relayer or account that submitted the transaction. */
-  via?: string;
-  refHash?: string;
-  timestamp: string;
-  blockNumber?: number;
-  transactionHash?: string;
+  actionCode: number;
+  actor: string | null;
+  executor: string | null;
+  didHash: string;
+  refHash: string;
+  via: string;
+  blockNumber: number;
+  transactionHash: string;
+  occurredAt: string;
 }
 
 export interface AuditPage {
-  events: AuditEvent[];
+  entries: AuditEntry[];
+  /** Opaque; pass back as `cursor`. Null on the last page. */
   nextCursor: string | null;
   /** "subgraph" or "chain" — which source answered. */
   source?: string;

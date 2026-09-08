@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Dashboard } from "./Dashboard";
 import { renderWithProviders } from "@/test/harness";
-import type { AuditEvent, Session } from "@/api/queries";
+import type { AuditEntry, Session } from "@/api/queries";
 
 /**
  * The dashboard's contract is mostly negative: it must never show a record it did not
@@ -20,11 +20,26 @@ const SESSION: Session = {
   roles: ["ADMIN", "AUDITOR"],
 };
 
-function event(over: Partial<AuditEvent> & { entryId: string; action: string }): AuditEvent {
+/**
+ * A real `AuditEntryDto`, not an approximation of one.
+ *
+ * These fixtures previously used invented field names, and every test passed because the
+ * mock encoded the same mistake the component made — the whole page would have rendered
+ * empty against the real API. The shape here mirrors
+ * `packages/backend/src/audit/serializers.ts` exactly, so a drift on either side now fails
+ * a test rather than shipping.
+ */
+function entry(over: Partial<AuditEntry> & { entryId: number; action: string }): AuditEntry {
   return {
-    didHash: "0xdid",
+    actionCode: 1,
     actor: ME,
-    timestamp: new Date().toISOString(),
+    executor: "0x1111111111111111111111111111111111111111",
+    didHash: "0xdid",
+    refHash: "0xref",
+    via: "0x2222222222222222222222222222222222222222",
+    blockNumber: 1,
+    transactionHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+    occurredAt: new Date().toISOString(),
     ...over,
   };
 }
@@ -74,7 +89,7 @@ describe("Dashboard — identity", () => {
   it("shows the DID read from the session", async () => {
     mockApi({
       "/auth/session": { body: SESSION },
-      "/audit": { body: { events: [], nextCursor: null } },
+      "/audit": { body: { entries: [], nextCursor: null } },
     });
 
     renderWithProviders(<Dashboard />, { wagmi: true });
@@ -87,7 +102,7 @@ describe("Dashboard — identity", () => {
   it("renders a QR of the DID, and none at all when there is no DID", async () => {
     mockApi({
       "/auth/session": { body: { ...SESSION, did: null } },
-      "/audit": { body: { events: [], nextCursor: null } },
+      "/audit": { body: { entries: [], nextCursor: null } },
     });
 
     renderWithProviders(<Dashboard />, { wagmi: true });
@@ -100,7 +115,7 @@ describe("Dashboard — identity", () => {
   it("lists the roles the chain returned", async () => {
     mockApi({
       "/auth/session": { body: SESSION },
-      "/audit": { body: { events: [], nextCursor: null } },
+      "/audit": { body: { entries: [], nextCursor: null } },
     });
 
     renderWithProviders(<Dashboard />, { wagmi: true });
@@ -113,7 +128,7 @@ describe("Dashboard — identity", () => {
     // on tap and lurches while you are trying to read.
     mockApi({
       "/auth/session": { body: SESSION },
-      "/audit": { body: { events: [], nextCursor: null } },
+      "/audit": { body: { entries: [], nextCursor: null } },
     });
 
     renderWithProviders(<Dashboard />, { wagmi: true });
@@ -124,17 +139,17 @@ describe("Dashboard — identity", () => {
 });
 
 describe("Dashboard — derived panels", () => {
-  const events = [
-    event({ entryId: "1", action: "ASSET_MINTED", refHash: "0xasset1", blockNumber: 10 }),
-    event({ entryId: "2", action: "CREDENTIAL_ISSUED", refHash: "0xcred1", blockNumber: 11 }),
-    event({ entryId: "3", action: "CREDENTIAL_REVOKED", refHash: "0xcred1", blockNumber: 12 }),
-    event({ entryId: "4", action: "DID_REGISTERED", blockNumber: 9 }),
+  const entries = [
+    entry({ entryId: 1, action: "ASSET_MINTED", refHash: "0xasset1", blockNumber: 10 }),
+    entry({ entryId: 2, action: "CREDENTIAL_ISSUED", refHash: "0xcred1", blockNumber: 11 }),
+    entry({ entryId: 3, action: "CREDENTIAL_REVOKED", refHash: "0xcred1", blockNumber: 12 }),
+    entry({ entryId: 4, action: "DID_REGISTERED", blockNumber: 9 }),
   ];
 
   beforeEach(() => {
     mockApi({
       "/auth/session": { body: SESSION },
-      "/audit": { body: { events, nextCursor: null, source: "chain" } },
+      "/audit": { body: { entries, nextCursor: null, source: "chain" } },
     });
   });
 
@@ -195,7 +210,7 @@ describe("Dashboard — the three kinds of nothing", () => {
   it("says 'no assets yet' when the trail is genuinely empty", async () => {
     mockApi({
       "/auth/session": { body: SESSION },
-      "/audit": { body: { events: [], nextCursor: null } },
+      "/audit": { body: { entries: [], nextCursor: null } },
     });
 
     renderWithProviders(<Dashboard />, { wagmi: true });
