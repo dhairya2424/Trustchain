@@ -12,7 +12,29 @@ export default defineConfig({
   envPrefix: "VITE_PUBLIC_",
 
   server: { port: 5173 },
-  build: { outDir: "dist", sourcemap: true },
+
+  build: {
+    outDir: "dist",
+    sourcemap: true,
+
+    rollupOptions: {
+      output: {
+        /*
+         * Vendor splitting for cache lifetime, not for total size.
+         *
+         * React and the web3 stack change on completely different schedules from the
+         * application code, so keeping them in the entry chunk means every deploy
+         * invalidates ~450kB that did not change. three.js and GSAP are absent here
+         * deliberately — they are already separate chunks because they are imported
+         * dynamically, and naming them would force them back into the static graph.
+         */
+        manualChunks: {
+          react: ["react", "react-dom", "react-router-dom"],
+          web3: ["wagmi", "viem", "@tanstack/react-query"],
+        },
+      },
+    },
+  },
 
   // Declared here so vitest does not walk up and adopt the repo-root config,
   // which targets tools/ and would run none of these tests.
