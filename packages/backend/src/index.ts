@@ -28,6 +28,7 @@ import {
   SelectedRoleReader,
 } from "./chain/selected";
 import type { CredentialDependencies } from "./credentials/routes";
+import type { RoleDependencies } from "./roles/routes";
 import { LocalPinner } from "./dev/localPinner";
 import type { CallerResolver } from "./http/authorize";
 import { parseAllowedOrigins } from "./http/cors";
@@ -313,6 +314,17 @@ function main(): void {
     allowedOrigins: parseAllowedOrigins(env.CORS_ORIGIN),
     ...(selector ? { audit: buildAudit(env, selector, logger, resolveCaller) } : {}),
     ...(credentials ? { credentials } : {}),
+    ...(selector
+      ? {
+          roles: {
+            chain: selector,
+            logger,
+            resolveCaller,
+            permissions: new SelectedPermissionReader(selector),
+            roles: new SelectedRoleReader(selector),
+          } satisfies RoleDependencies,
+        }
+      : {}),
     ...(assets ? { assets } : {}),
     ...(selector ? { network: { selector, logger, resolveCaller } } : {}),
     httpLogger: httpLogger(pino),

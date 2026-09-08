@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdminLayout } from "./AdminLayout";
@@ -290,56 +290,143 @@ describe("MintWizard", () => {
 });
 
 describe("RoleManager", () => {
-  beforeEach(() => {
+  const SUBJECT = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+
+  function lookupApi(subject: { did: string | null; roles: string[] }, session = SESSION) {
+    mockApi({
+      "/auth/session": { body: session },
+      "/roles/": { body: { address: SUBJECT, ...subject } },
+    });
+  }
+
+  async function lookUpSubject(address = SUBJECT) {
+    fireEvent.change(screen.getByTestId("role-lookup-input"), { target: { value: address } });
+    fireEvent.click(screen.getByTestId("role-lookup"));
+    await waitFor(() => expect(screen.getByTestId("role-subject")).toBeInTheDocument());
+  }
+
+  it("shows the role model before any address is looked up", async () => {
     mockApi({ "/auth/session": { body: SESSION } });
+    renderWithProviders(<RoleManager />, { wagmi: true });
+
+    await waitFor(() => expect(screen.getAllByTestId("role-reference")).toHaveLength(4));
   });
 
   it("lists exactly the four roles the platform defines", async () => {
+    lookupApi({ did: "did:trustchain:bob", roles: ["MANAGER"] });
     renderWithProviders(<RoleManager />, { wagmi: true });
-
-    await waitFor(() => expect(screen.getAllByTestId("role-row")).toHaveLength(4));
+    await lookUpSubject();
 
     const ids = screen.getAllByTestId("role-row").map((row) => row.getAttribute("data-role"));
     expect(ids).toEqual(["ADMIN", "MANAGER", "AUDITOR", "USER"]);
   });
 
-  it("marks which roles the signed-in identity actually holds", async () => {
+  it("reflects the roles the chain reports for that identity", async () => {
+    lookupApi({ did: "did:trustchain:bob", roles: ["MANAGER"] });
     renderWithProviders(<RoleManager />, { wagmi: true });
+    await lookUpSubject();
 
-    await waitFor(() =>
-      expect(screen.getAllByTestId("role-row")[0]).toHaveAttribute("data-held", "true"),
-    );
+    expect(screen.getByTestId("role-toggle-MANAGER")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByTestId("role-toggle-ADMIN")).toHaveAttribute("aria-checked", "false");
+  });
 
-    const rows = screen.getAllByTestId("role-row");
-    expect(within(rows[0]!).getByText("Held")).toBeInTheDocument();
-    expect(rows[1]).toHaveAttribute("data-held", "false");
+  it("refuses to act on an address with no DID, because roles attach to identities", async () => {
+    // The contract resolves a DID's controller at execution time. There is nothing to grant
+    // a role to when no identity is registered.
+    lookupApi({ did: null, roles: [] });
+    renderWithProviders(<RoleManager />, { wagmi: true });
+    await lookUpSubject();
+
+    expect(screen.getByTestId("subject-no-did")).toBeInTheDocument();
+    expect(screen.getByTestId("role-toggle-MANAGER")).toBeDisabled();
+  });
+
+  it("leaves the controls inert for a caller who is not ADMIN", async () => {
+    // Shown rather than hidden — and the API and contract would both refuse anyway, so this
+    // is a courtesy, never the gate.
+    lookupApi({ did: "did:trustchain:bob", roles: [] }, { ...SESSION, roles: ["MANAGER"] });
+    renderWithProviders(<RoleManager />, { wagmi: true });
+    await lookUpSubject();
+
+    expect(screen.getByTestId("role-toggle-ADMIN")).toBeDisabled();
+    expect(screen.getByTestId("cannot-manage")).toBeInTheDocument();
+  });
+
+  it("warns before an administrator revokes their own ADMIN", async () => {
+    // The one change with no recovery path, if it was the last ADMIN.
+    mockApi({
+      "/auth/session": { body: SESSION },
+      "/roles/": { body: { address: ME, did: "did:trustchain:alice", roles: ["ADMIN"] } },
+    });
+    renderWithProviders(<RoleManager />, { wagmi: true });
+    await lookUpSubject(ME);
+
+    expect(screen.getByTestId("self-lockout-warning")).toBeInTheDocument();
   });
 
   /**
-   * The important one.
+   * The security property, asserted directly.
    *
-   * A toggle that flips, animates and changes nothing on-chain would be worse than no
-   * toggle: someone would grant "ADMIN" to a colleague, see it turn green, and believe it.
-   * So the console renders no role-mutating control at all while the API has no endpoint
-   * for it, and says so.
+   * A role change must be prepared, signed by the administrator, and forwarded — never
+   * submitted by the API on their behalf. If this regressed to a direct POST, the relayer
+   * would need authority to grant any role to anyone, which is exactly the confused deputy
+   * the ERC-2771 work closes.
    */
-  it("ships no grant or revoke control while the API has none", async () => {
-    renderWithProviders(<RoleManager />, { wagmi: true });
+  it("prepares and signs rather than asking the API to make the change", async () => {
+    const calls: string[] = [];
 
-    await waitFor(() => expect(screen.getByTestId("roles-not-wired")).toBeInTheDocument());
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        calls.push(url);
 
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /grant/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /revoke/i })).not.toBeInTheDocument();
-  });
+        if (url.includes("/auth/session")) {
+          return new Response(JSON.stringify(SESSION), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
 
-  it("explains that the absence is a missing endpoint, not a disabled feature", async () => {
-    renderWithProviders(<RoleManager />, { wagmi: true });
+        if (url.includes("/roles/prepare-grant")) {
+          return new Response(
+            JSON.stringify({
+              role: "MANAGER",
+              typedData: {
+                domain: { name: "TrustChainForwarder", verifyingContract: SUBJECT },
+                types: { ForwardRequest: [] },
+                primaryType: "ForwardRequest",
+                message: {
+                  from: ME,
+                  to: SUBJECT,
+                  value: "0",
+                  gas: "1500000",
+                  nonce: "0",
+                  deadline: 9_999_999_999,
+                  data: "0xabcdef",
+                },
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
 
-    await waitFor(() =>
-      expect(screen.getByTestId("roles-not-wired")).toHaveTextContent(
-        "no endpoint to change a role",
-      ),
+        return new Response(
+          JSON.stringify({ address: SUBJECT, did: "did:trustchain:bob", roles: [] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }),
     );
+
+    renderWithProviders(<RoleManager />, { wagmi: true });
+    await lookUpSubject();
+
+    fireEvent.click(screen.getByTestId("role-toggle-MANAGER"));
+
+    await waitFor(() => expect(calls.some((url) => url.includes("prepare-grant"))).toBe(true));
+
+    // There is no endpoint that would perform the change server-side, and nothing here
+    // calls one.
+    expect(calls.some((url) => /\/roles\/(grant|revoke)\b/.test(url))).toBe(false);
   });
 });

@@ -215,3 +215,56 @@ export function encodeRevokeCredential(credentialHash: string, reasonCode: numbe
     args: [credentialHash as Hex, reasonCode],
   });
 }
+
+/**
+ * Grant a role to the identity behind `didHash`.
+ *
+ * Roles attach to a DID rather than to a raw wallet, which is the problem statement's own
+ * model: access rights belong to a verified identity, and the contract resolves that
+ * identity's current controller at execution time. Granting to an address instead would
+ * silently break the moment a DID rotated its key — the old wallet would keep the role.
+ *
+ * Authorization is the contract's, not this function's. `grantRoleToDID` calls OpenZeppelin
+ * `grantRole`, which requires the caller to administer the role, and under ERC-2771 that
+ * caller is the actor recovered from the signature rather than the relayer that submitted
+ * it. So a forged request from someone without MANAGE_ROLES is refused on-chain even if it
+ * gets past every check in this process.
+ */
+export function encodeGrantRoleToDID(didHash: string, role: string): Hex {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: "function",
+        name: "grantRoleToDID",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "didHash", type: "bytes32" },
+          { name: "role", type: "bytes32" },
+        ],
+        outputs: [],
+      },
+    ] as const,
+    functionName: "grantRoleToDID",
+    args: [didHash as Hex, role as Hex],
+  });
+}
+
+/** Revoke a role from the identity behind `didHash`. See {@link encodeGrantRoleToDID}. */
+export function encodeRevokeRoleFromDID(didHash: string, role: string): Hex {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: "function",
+        name: "revokeRoleFromDID",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "didHash", type: "bytes32" },
+          { name: "role", type: "bytes32" },
+        ],
+        outputs: [],
+      },
+    ] as const,
+    functionName: "revokeRoleFromDID",
+    args: [didHash as Hex, role as Hex],
+  });
+}

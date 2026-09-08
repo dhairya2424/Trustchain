@@ -1,8 +1,8 @@
 # Admin console (P3.3)
 
 Three consoles behind a shared left rail at `/admin`: the audit log, a mint wizard, and
-roles. Two of them do real work. The third does not, and says so — which is the part of this
-phase worth reading carefully.
+roles. All three now do real work — roles was wired after the initial P3.3 pass, and the
+shape of that wiring is the part worth reading carefully.
 
 ## The rail
 
@@ -61,36 +61,65 @@ row**. An optimistic row would be a record the app has not actually read back �
 the fabrication this product cannot afford. The new entry appears because the trail is
 re-read.
 
-## Roles — deliberately not wired
+## Roles — wired, two-phase
 
-The build plan asks for inline grant/revoke with animated toggles. **That is not built, and
-the reason is the point.**
+Grant and revoke are real. They are **not** a POST that asks the API to make the change:
+that would require the relayer to hold authority to grant any role to anyone, which is
+exactly the confused deputy the ERC-2771 work exists to close.
 
-There is no API for it. The backend exposes no endpoint to grant or revoke a role, and none
-to read the roles of an address other than your own. Building the toggles anyway would give
-a switch that flips, animates, turns green — and changes nothing on-chain. On the one screen
-where a control that lies about authorization is most dangerous, someone would grant "ADMIN"
-to a colleague, watch the animation, and believe it happened.
+Instead, the same two-phase flow as minting and credential issuance:
 
-So the console shows what is genuinely known — the four-role model from the contracts, and
-your own roles read from the chain at sign-in — and states plainly that the mutation is
-unavailable. A test asserts that **no switch, no grant button and no revoke button exists**,
-so the honest version cannot regress into a decorative one.
+1. `POST /roles/prepare-grant` (or `prepare-revoke`) returns EIP-712 typed data
+2. the ADMIN signs it in their own wallet
+3. `POST /network/forward` relays it
 
-### What wiring it would take
+The relayer pays the gas; the contract still sees the ADMIN as the caller. A role change is
+therefore recorded against the person who asked for it.
 
-In order, and through the existing two-phase signing flow rather than around it:
+### Roles attach to a DID, not an address
 
-1. `encodeGrantRole` / `encodeRevokeRole` beside the existing encoders in
-   `packages/backend/src/chain/forwarding.ts`
-2. a prepare endpoint returning EIP-712 typed data, matching how mint and credential
-   issuance already work, so the ADMIN signs and the relayer merely submits
-3. `RoleAccessControl` in the forwarder's target allowlist
-4. a read endpoint for another address's roles
+The contract's entry points are `grantRoleToDID(bytes32 didHash, bytes32 role)` and
+`revokeRoleFromDID`. It resolves that identity's _active controller_ at execution time, so a
+key rotation carries the role with it instead of stranding it on an old wallet — which is
+the problem statement's model: rights belong to a verified identity.
 
-Doing it this way is what keeps attribution intact: a role change would be recorded against
-the ADMIN who requested it, not the relayer that paid for it. Doing it any other way would
-reintroduce the confused deputy the ERC-2771 work exists to close.
+The console therefore takes an address only as a way to find the identity behind it, and
+refuses to act when there is none. A test covers that case.
+
+### What the API will not encode
+
+`role` is a **name** from the four the platform defines, never a raw `bytes32`. Accepting a
+hash would let a caller prepare a grant for any role identifier the contract recognises,
+including `DEFAULT_ADMIN_ROLE` — the one that administers every other role. Constraining the
+input means such a call cannot be _constructed_ here, rather than relying on the contract to
+refuse it afterwards. There is a test for exactly that request.
+
+The schema is `.strict()`, so an unknown field is a 400 rather than something a later
+refactor might start reading. And `actor` always comes from the session, never the body: a
+caller cannot prepare a role change attributed to somebody else.
+
+### Three layers of authorization
+
+| Layer    | Check                                                | Why it exists                                                                                                                              |
+| -------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Console  | `canManage` disables the switch                      | Courtesy only. Shown rather than hidden, so a denied capability is discoverable.                                                           |
+| API      | `requirePermission("MANAGE_ROLES")`, read from chain | Avoids spending relayer gas discovering what it could have known, and gives a 403 that explains itself.                                    |
+| Contract | `grantRole` against the recovered signer             | **The control that matters.** A forged request from someone without the permission is refused on-chain even if it passes everything above. |
+
+`GET /roles/:address` requires a session but no particular role. The data is public — anyone
+can call `rolesOf` against the chain directly — so gating it on ADMIN would inconvenience
+only the honest. The session requirement exists because the endpoint makes the platform do a
+chain read on request, and an unauthenticated amplifier is worth avoiding.
+
+### Self-lockout
+
+Revoking your own ADMIN is the one change with no recovery path if it was the last one. The
+console warns before it, and does not block it: an administrator who means to step down is
+entitled to, and a UI that silently refuses would be worse than one that explains.
+
+The switch also does **not** flip optimistically. The chain is the authority on who holds a
+role, and moving the control before the transaction confirms would assert something nobody
+has verified yet; it re-reads instead.
 
 ## Toasts
 

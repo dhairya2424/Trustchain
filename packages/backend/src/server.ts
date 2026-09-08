@@ -8,6 +8,7 @@ import { createNetworkRouter, type NetworkDependencies } from "./chain/routes";
 import { createAuthRouter, type AuthDependencies } from "./auth/routes";
 import { createCredentialRouter, type CredentialDependencies } from "./credentials/routes";
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
+import { createRoleRouter, type RoleDependencies } from "./roles/routes";
 import { ConsoleLogger, type Logger } from "./http/logger";
 import { errorHandler, requestId, sanitizeInput, validate } from "./http/middleware";
 import { corsMiddleware } from "./http/cors";
@@ -28,6 +29,8 @@ export interface ServerOptions {
   /** Reports which chain is active. Public — see chain/routes.ts. */
   network?: NetworkDependencies;
   credentials?: CredentialDependencies;
+  /** Role administration: two prepare endpoints and a public-ish read. */
+  roles?: RoleDependencies;
   logger?: Logger;
   security?: SecurityOptions;
   /**
@@ -115,6 +118,10 @@ export function createServer(options: ServerOptions = {}): Express {
 
   if (options.credentials) {
     app.use("/credentials", createCredentialRouter(options.credentials));
+  }
+
+  if (options.roles) {
+    app.use("/roles", createRoleRouter(options.roles));
   }
 
   // Last, after every route. Handlers are wrapped in `asyncHandler`, which forwards a
