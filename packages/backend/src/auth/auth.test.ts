@@ -142,7 +142,9 @@ describe("POST /auth/verify — happy path", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.address.toLowerCase()).toBe(account.address.toLowerCase());
-    expect(res.body.roles).toEqual([ADMIN_ROLE]);
+    // Names in the body. The chain returns 32-byte ids and the token keeps them, but a
+    // client comparing against "ADMIN" is reading a name — see the token assertion below.
+    expect(res.body.roles).toEqual(["ADMIN"]);
     expect(res.body.did).toBe(ALICE_DID);
   });
 
@@ -156,7 +158,7 @@ describe("POST /auth/verify — happy path", () => {
 
     expect(res.status).toBe(200);
     expect(h.roles.calls).toBe(1);
-    expect(res.body.roles).toEqual([ADMIN_ROLE]);
+    expect(res.body.roles).toEqual(["ADMIN"]);
     expect(res.body.did).toBe(ALICE_DID);
   });
 
@@ -193,6 +195,8 @@ describe("POST /auth/verify — happy path", () => {
     const payload = await h.tokens.verifyAccessToken(decodeURIComponent(token ?? ""));
 
     expect(String(payload.sub).toLowerCase()).toBe(account.address.toLowerCase());
+    // Ids, deliberately: `requireRole` compares ids, so translating them into the token
+    // claims would silently un-gate every role-checked route.
     expect(payload.roles).toEqual([ADMIN_ROLE]);
   });
 });
@@ -534,7 +538,7 @@ describe("GET /auth/session", () => {
     expect(res.status).toBe(200);
     expect(res.body.address.toLowerCase()).toBe(account.address.toLowerCase());
     expect(res.body.did).toBe(ALICE_DID);
-    expect(res.body.roles).toEqual([ADMIN_ROLE]);
+    expect(res.body.roles).toEqual(["ADMIN"]);
   });
 
   it("refuses a request with no session rather than answering with nulls", async () => {

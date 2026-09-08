@@ -121,6 +121,31 @@ The switch also does **not** flip optimistically. The chain is the authority on 
 role, and moving the control before the transaction confirms would assert something nobody
 has verified yet; it re-reads instead.
 
+## Verified live
+
+`node tools/e2e-roles.mjs` drives the whole flow against a real chain: an ADMIN signs in,
+prepares a grant, signs the EIP-712 payload with their own key, forwards it, and the role is
+read back from the chain — then the same for a revoke. 18 assertions, including that the
+audit entry names the ADMIN as `actor` and the relayer separately as `executor`.
+
+It is worth running rather than trusting the unit tests, because those stub the chain. Only
+an end-to-end run proves the encoded calldata matches the deployed ABI and that the
+forwarder accepts the signature. It found three real bugs the unit tests could not:
+
+- the frontend sent `forwarder` where `POST /network/forward` expects `verifyingContract`
+  and `chainId`, so every relayed write from the browser would have been a 400
+- `GET /roles/:address`, `/auth/verify` and `/auth/session` all returned raw 32-byte role
+  **ids**, while every client comparison is against a **name** — so `roles.includes("ADMIN")`
+  was always false and an ADMIN could never have used these controls. Names are now returned
+  at the API boundary; the access token still carries ids, because `requireRole` compares
+  ids and translating them there would silently un-gate every role-checked route.
+- the relayer's signer had a zero balance after the Hardhat container restarted, so
+  transactions were accepted and then never landed. `node tools/fund-relayer.mjs` fixes that
+  in one command, and it is needed after every restart.
+
+Run it _before_ `tools/e2e-flow.mjs`: that script deliberately exhausts the per-IP auth
+limiter as its last step, so the two back to back will rate-limit the second.
+
 ## Toasts
 
 Every action reports through a status toast that carries a transaction from submitted to

@@ -1,4 +1,5 @@
 import { Router, type CookieOptions, type Request, type Response } from "express";
+import { roleNames } from "./roles";
 import { RateLimiterMemory, type RateLimiterAbstract } from "rate-limiter-flexible";
 import { z } from "zod";
 import { parseSiweMessage } from "viem/siwe";
@@ -192,7 +193,17 @@ export function createAuthRouter(deps: AuthDependencies): Router {
           refreshToken,
           cookieOptions(deps, deps.config.refreshTtlSeconds, "/auth"),
         )
-        .json({ address, did: identity.did, roles: identity.roles });
+        /*
+         * Names in the body, ids in the token.
+         *
+         * `rolesOf` returns 32-byte hashes, and that is what the access token must keep:
+         * `requireRole` compares ids, so translating them into the session claims would
+         * silently un-gate every role-checked route. The response body is a different
+         * audience — a client comparing against "ADMIN" is reading a name, and shipping it
+         * raw hex means every such comparison is false and the UI shows 32 bytes of hex
+         * where a role should be.
+         */
+        .json({ address, did: identity.did, roles: roleNames(identity.roles) });
     }),
   );
 
@@ -224,7 +235,17 @@ export function createAuthRouter(deps: AuthDependencies): Router {
             refreshToken,
             cookieOptions(deps, deps.config.refreshTtlSeconds, "/auth"),
           )
-          .json({ address, did: identity.did, roles: identity.roles });
+          /*
+           * Names in the body, ids in the token.
+           *
+           * `rolesOf` returns 32-byte hashes, and that is what the access token must keep:
+           * `requireRole` compares ids, so translating them into the session claims would
+           * silently un-gate every role-checked route. The response body is a different
+           * audience — a client comparing against "ADMIN" is reading a name, and shipping it
+           * raw hex means every such comparison is false and the UI shows 32 bytes of hex
+           * where a role should be.
+           */
+          .json({ address, did: identity.did, roles: roleNames(identity.roles) });
       } catch (error) {
         const code = error instanceof TokenError ? error.code : "invalid_token";
 
@@ -283,7 +304,8 @@ export function createAuthRouter(deps: AuthDependencies): Router {
         res.json({
           address,
           did: typeof payload.did === "string" ? payload.did : null,
-          roles,
+          // Same boundary as /auth/verify: the token carries ids, the body carries names.
+          roles: roleNames(roles),
         });
       } catch {
         // An expired or tampered cookie is the same answer as no cookie. Distinguishing

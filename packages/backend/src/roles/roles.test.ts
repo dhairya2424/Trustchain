@@ -307,9 +307,12 @@ describe("GET /roles/:address", () => {
   });
 
   it("returns the roles and DID the chain reports for that address", async () => {
+    // The reader returns on-chain ids, exactly as the real one does; the endpoint maps
+    // them to names. Feeding names here would have hidden the bug that shipped: the API
+    // was returning raw hashes and every client comparison against "ADMIN" was false.
     const h = buildHarness(adminCaller, [], {
       did: "did:trustchain:bob",
-      roles: ["MANAGER", "USER"],
+      roles: [ROLE_IDS.MANAGER, ROLE_IDS.USER],
     });
 
     const res = await request(h.app).get(`/roles/${MANAGER}`);

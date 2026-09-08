@@ -88,7 +88,10 @@ export async function forwardSigned(
         data: typedData.message.data,
       },
       signature,
-      forwarder: typedData.domain.verifyingContract,
+      // The API names these `verifyingContract` and `chainId`, and its schema is strict —
+      // sending a `forwarder` key instead is a 400, which is exactly how this was found.
+      verifyingContract: typedData.domain.verifyingContract,
+      chainId: typedData.domain.chainId,
     }),
   });
 

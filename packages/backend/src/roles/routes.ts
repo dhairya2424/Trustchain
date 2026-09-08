@@ -11,7 +11,7 @@ import { toNetworkDto } from "../chain/routes";
 import { serializeTypedData } from "../chain/forwardRequest";
 import type { NetworkSelector } from "../chain/networkSelector";
 import type { PermissionReader, RoleReader } from "../auth/roleReader";
-import { ROLE_IDS, ROLE_NAMES, type RoleName } from "../auth/roles";
+import { ROLE_IDS, ROLE_NAMES, roleNames, type RoleName } from "../auth/roles";
 import { asyncHandler } from "../http/middleware";
 import { requirePermission, requireSession, type CallerResolver } from "../http/authorize";
 import type { Logger } from "../http/logger";
@@ -100,7 +100,9 @@ export function createRoleRouter(deps: RoleDependencies): Router {
       res.json({
         address: parsed.data,
         did: identity.did,
-        roles: identity.roles,
+        // Names, not the 32-byte ids `rolesOf` returns. A client comparing against "ADMIN"
+        // is reading a name; handing it raw hex makes every such comparison false.
+        roles: roleNames(identity.roles),
       });
     }),
   );
