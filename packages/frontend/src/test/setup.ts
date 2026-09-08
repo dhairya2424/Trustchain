@@ -34,3 +34,37 @@ afterEach(() => {
  * hiding it.
  */
 HTMLCanvasElement.prototype.getContext = () => null;
+
+/*
+ * jsdom implements no PointerEvent, and Radix's dismissable layer listens for `pointerdown`
+ * to close a dialog on an outside press. Without this the event dispatched by a test is a
+ * plain Event that Radix ignores, and the outside-press behaviour looks broken when it is
+ * only untestable.
+ *
+ * A minimal subclass of MouseEvent is enough: the properties Radix reads are the ones
+ * MouseEvent already provides, plus pointerType.
+ */
+if (typeof window.PointerEvent === "undefined") {
+  class PointerEventPolyfill extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    readonly isPrimary: boolean;
+
+    constructor(type: string, params: PointerEventInit = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId ?? 1;
+      this.pointerType = params.pointerType ?? "mouse";
+      this.isPrimary = params.isPrimary ?? true;
+    }
+  }
+
+  window.PointerEvent = PointerEventPolyfill as unknown as typeof PointerEvent;
+  globalThis.PointerEvent = window.PointerEvent;
+}
+
+// Radix calls these on the element it is about to trap focus in; jsdom has neither.
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.setPointerCapture = () => {};
+  HTMLElement.prototype.releasePointerCapture = () => {};
+}

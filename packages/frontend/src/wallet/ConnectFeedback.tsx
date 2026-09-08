@@ -1,7 +1,7 @@
 import { motion as fm } from "framer-motion";
 import { useMemo } from "react";
 
-import { useMotion } from "../motion/MotionProvider";
+import { useMotion } from "@/motion/MotionProvider";
 
 /**
  * The three states of connecting, as animation.
@@ -10,18 +10,16 @@ import { useMotion } from "../motion/MotionProvider";
  * the modal's live region. A screen reader user gets "Connecting to MetaMask" and then
  * "Wallet connected" as words; duplicating that as decorative SVG would just be noise.
  *
- * Each one degrades to a still frame under reduced motion rather than disappearing, because
- * the shape itself carries the meaning — a checkmark still says "connected" whether or not
- * it was drawn on.
+ * Everything here is drawn in the neutral palette except the checkmark, which is allowed
+ * the verified green — success is a status, and status is what colour is reserved for.
  */
 
-/** Expanding rings while a connection is pending. */
+/** Expanding rings while a connection is pending. A thin ring, not a glow. */
 export function PulseRings() {
   const motion = useMotion();
 
   if (motion.reduced) {
-    // A static ring. Still clearly "in progress" next to the spinner text, with nothing
-    // expanding or fading.
+    // A static ring. Still clearly "in progress" next to the text, with nothing expanding.
     return (
       <span
         className="pulse-rings pulse-rings--static"
@@ -37,18 +35,18 @@ export function PulseRings() {
         <fm.span
           key={ring}
           className="pulse-ring"
-          initial={{ scale: 0.4, opacity: 0.55 }}
-          animate={{ scale: 1.9, opacity: 0 }}
+          initial={{ scale: 0.35, opacity: 0.7 }}
+          animate={{ scale: 1.85, opacity: 0 }}
           transition={{
-            duration: 1.8,
+            duration: 2,
             // Evenly offset so the rings read as a steady pulse rather than a burst.
-            delay: ring * 0.6,
+            delay: ring * 0.66,
             repeat: Infinity,
             ease: "easeOut",
           }}
         />
       ))}
-      <span className="pulse-core" />
+      <span className="size-2 rounded-full bg-fg-muted" />
     </span>
   );
 }
@@ -56,61 +54,48 @@ export function PulseRings() {
 /**
  * A checkmark that draws itself.
  *
- * Implemented with stroke-dashoffset rather than a path morph: one animated property, and
- * it degrades to a fully drawn check simply by leaving the offset at zero.
+ * `pathLength` rather than a path morph: one animated property, and it degrades to a fully
+ * drawn check simply by starting at 1.
  */
 export function CheckmarkDraw() {
   const motion = useMotion();
 
   return (
     <svg
-      className="checkmark"
+      className="size-14 text-verified"
       viewBox="0 0 52 52"
+      fill="none"
       aria-hidden="true"
       data-testid="checkmark"
       data-animated={motion.reduced ? "false" : "true"}
     >
-      <fm.circle
-        cx="26"
-        cy="26"
-        r="24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        opacity="0.35"
-        initial={motion.reduced ? false : { pathLength: 0 }}
-        animate={{ pathLength: 1 }}
-        transition={motion.transition("slow")}
-      />
+      <circle cx="26" cy="26" r="24" stroke="currentColor" strokeWidth="1" opacity="0.3" />
       <fm.path
-        d="M15 27 L23 35 L38 18"
-        fill="none"
+        d="M15 26.5 L22.5 34 L37 19"
         stroke="currentColor"
-        strokeWidth="3.5"
+        strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
         initial={motion.reduced ? false : { pathLength: 0 }}
         animate={{ pathLength: 1 }}
-        transition={
-          motion.reduced ? { duration: 0 } : { duration: 0.45, delay: 0.25, ease: "easeOut" }
-        }
+        transition={motion.reduced ? { duration: 0 } : { duration: 0.4, ease: "easeOut" }}
       />
     </svg>
   );
 }
 
-const CONFETTI_COLORS = ["#22d3ee", "#a78bfa", "#34d399", "#fbbf24"];
-const CONFETTI_COUNT = 14;
+const CONFETTI_COUNT = 10;
 
 /**
  * A small burst on success.
  *
- * Deliberately a micro-burst: fourteen pieces, half a second, contained in the modal. A
- * full-screen cannon on every wallet connection would be exhausting by the third time, and
- * this is an action people repeat.
+ * Deliberately tiny: ten neutral flecks, contained in the modal, gone in half a second. A
+ * full-screen colour cannon on every wallet connection would be exhausting by the third
+ * time, and this is an action people repeat — and coloured confetti would spend the status
+ * palette on celebration, which is the one thing it must not be used for.
  *
  * Renders nothing under reduced motion. Unlike the checkmark there is no meaning here to
- * preserve — it is pure celebration, so the honest reduced form is its absence.
+ * preserve, so the honest reduced form is its absence.
  */
 export function ConfettiBurst() {
   const motion = useMotion();
@@ -120,13 +105,12 @@ export function ConfettiBurst() {
     () =>
       Array.from({ length: CONFETTI_COUNT }, (_, index) => {
         const angle = (index / CONFETTI_COUNT) * Math.PI * 2;
-        const distance = 46 + Math.random() * 38;
+        const distance = 40 + Math.random() * 26;
         return {
           id: index,
           x: Math.cos(angle) * distance,
           y: Math.sin(angle) * distance,
-          rotate: Math.random() * 320 - 160,
-          color: CONFETTI_COLORS[index % CONFETTI_COLORS.length]!,
+          rotate: Math.random() * 220 - 110,
         };
       }),
     [],
@@ -139,17 +123,10 @@ export function ConfettiBurst() {
       {pieces.map((piece) => (
         <fm.span
           key={piece.id}
-          className="confetti-piece"
-          style={{ background: piece.color }}
-          initial={{ x: 0, y: 0, opacity: 1, scale: 1, rotate: 0 }}
-          animate={{
-            x: piece.x,
-            y: piece.y,
-            opacity: 0,
-            scale: 0.4,
-            rotate: piece.rotate,
-          }}
-          transition={{ duration: 0.72, ease: "easeOut" }}
+          className="confetti-piece bg-fg-faint"
+          initial={{ x: 0, y: 0, opacity: 0.9, scale: 1, rotate: 0 }}
+          animate={{ x: piece.x, y: piece.y, opacity: 0, scale: 0.4, rotate: piece.rotate }}
+          transition={{ duration: 0.62, ease: "easeOut" }}
         />
       ))}
     </span>

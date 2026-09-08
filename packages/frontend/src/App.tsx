@@ -1,9 +1,10 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 
+import { NetworkBadge } from "./components/NetworkBadge";
 import { Landing } from "./routes/Landing";
 import { Admin, Dashboard, Verify } from "./routes/routes";
 import { ConnectButton } from "./wallet/ConnectButton";
-import { NetworkBadge } from "./components/NetworkBadge";
+import { cn } from "@/lib/utils";
 
 /**
  * The app shell: a persistent header, the routed view, and a footer.
@@ -22,30 +23,52 @@ const NAV = [
 
 export default function App() {
   return (
-    <div className="app">
+    <div className="flex min-h-screen flex-col">
       {/*
         First focusable element on the page. A keyboard user should not have to tab through
         the whole navigation on every route to reach the content.
       */}
-      <a className="skip-link" href="#main">
+      <a
+        href="#main"
+        className="absolute left-3 top-0 z-100 -translate-y-full rounded-b bg-fg px-4 py-2 text-[13px] font-medium text-base transition-transform focus:translate-y-0"
+      >
         Skip to content
       </a>
 
-      <header className="app-header">
-        <div className="shell app-header__inner">
-          <NavLink to="/" className="brand" aria-label="TrustChain home">
-            <span className="brand-mark" aria-hidden="true" />
-            <span className="brand-text">TrustChain</span>
+      <header className="sticky top-0 z-40 border-b border-line bg-base/85 backdrop-blur-md">
+        <div className="mx-auto flex min-h-15 w-full max-w-[1200px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
+          <NavLink
+            to="/"
+            className="flex items-center gap-2.5 text-[15px] font-semibold tracking-tight text-fg"
+            aria-label="TrustChain home"
+          >
+            {/* A drawn mark, not a gradient chip: two linked squares, offset. */}
+            <span
+              className="relative size-4 shrink-0 rounded-[2px] border border-fg-muted"
+              aria-hidden="true"
+            >
+              <span className="absolute -bottom-1 -right-1 size-2.5 rounded-[1px] border border-fg-faint bg-base" />
+            </span>
+            TrustChain
           </NavLink>
 
-          <nav className="app-nav" aria-label="Primary">
+          <nav
+            className="order-3 flex w-full gap-0.5 sm:order-none sm:mr-auto sm:w-auto"
+            aria-label="Primary"
+          >
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  isActive ? "app-nav__link is-active" : "app-nav__link"
+                  cn(
+                    "rounded px-3 py-1.5 text-[13.5px] transition-colors",
+                    // Weight as well as colour: "current" must not be carried by hue alone.
+                    isActive
+                      ? "bg-hover font-medium text-fg"
+                      : "font-normal text-fg-muted hover:bg-hover/60 hover:text-fg",
+                  )
                 }
               >
                 {item.label}
@@ -53,8 +76,8 @@ export default function App() {
             ))}
           </nav>
 
-          <div className="app-header__right">
-            <span className="app-header__network">
+          <div className="ml-auto flex items-center gap-3 sm:ml-0">
+            <span className="hidden lg:inline-flex">
               <NetworkBadge />
             </span>
             <ConnectButton />
@@ -62,7 +85,7 @@ export default function App() {
         </div>
       </header>
 
-      <main id="main">
+      <main id="main" className="flex-1">
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/dashboard" element={<Dashboard />} />
@@ -75,24 +98,26 @@ export default function App() {
           <Route
             path="*"
             element={
-              <section className="shell section">
-                <h1>Page not found</h1>
-                <p className="route-lead">That route does not exist. Try the navigation above.</p>
+              <section className="mx-auto w-full max-w-[1200px] px-4 py-20 sm:px-6">
+                <h1 className="text-title">Page not found</h1>
+                <p className="mt-3 max-w-[60ch] text-fg-muted">
+                  That route does not exist. Try the navigation above.
+                </p>
               </section>
             }
           />
         </Routes>
       </main>
 
-      <footer className="app-footer">
-        <div className="shell app-footer__inner">
+      <footer className="mt-auto border-t border-line">
+        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap justify-between gap-3 px-4 py-6 text-[12.5px] text-fg-faint sm:px-6">
           <span>TrustChain — decentralized identity, on-chain RBAC, NFT asset ownership.</span>
           {/*
             No second network badge here. Each one polls /network on its own timer, so a
             duplicate would double the request rate to say the same thing twice on one
             screen.
           */}
-          <span className="mono app-footer__net">Built for SIH 2026</span>
+          <span className="font-mono">Built for SIH 2026</span>
         </div>
       </footer>
     </div>

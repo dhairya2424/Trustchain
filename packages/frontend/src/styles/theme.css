@@ -1,0 +1,274 @@
+@import "tailwindcss";
+
+/*
+ * TrustChain design system.
+ *
+ * One rule holds the whole thing together: **colour means something.**
+ *
+ * The interface is monochrome graphite. Every hue on screen is a status — verified,
+ * fallback, revoked — so a coloured pixel is always information rather than decoration.
+ * That is not just restraint for its own sake; on a platform whose product is the
+ * difference between "publicly verifiable" and "local only", a UI that spends green and
+ * amber on ornament has thrown away the vocabulary it needs to say the one thing that
+ * matters.
+ *
+ * Consequences, deliberately:
+ *   - no gradients, anywhere
+ *   - no glow shadows; depth comes from a hairline border and honest elevation
+ *   - no backdrop-filter except on the modal scrim, where it separates two live layers
+ *   - focus and "current" are expressed in high-contrast neutral, not in a brand hue,
+ *     because those are states rather than statuses
+ *
+ * Structure is carried by 1px rules and alignment — closer to a spec sheet or an
+ * instrument panel than to a marketing page.
+ */
+
+@theme {
+  /* ---- surfaces. Neutral, no blue cast: a cool grey reads as "tech product". ---- */
+  --color-base: #0b0b0c;
+  --color-surface: #100f11;
+  --color-raised: #16161a;
+  --color-hover: #1d1d22;
+
+  /* ---- hairlines. The primary structural device. ---- */
+  --color-line: #26262b;
+  --color-line-strong: #383840;
+
+  /* ---- text. Three steps is enough; a fourth always gets misused. ---- */
+  --color-fg: #ececee;
+  --color-fg-muted: #9b9ba3;
+  --color-fg-faint: #67676f;
+
+  /* ---- status. The only chroma in the product. ---- */
+  --color-verified: #4f9d69; /* on a public chain, independently checkable */
+  --color-fallback: #bf9040; /* running locally; real, but only locally verifiable */
+  --color-revoked: #c15b57; /* revoked, expired, refused */
+
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+
+  /* A small, deliberate scale. Display sizes are fluid; body text is not, because
+     body text that changes size with the viewport is harder to read, not easier. */
+  --text-display: clamp(2.5rem, 6vw, 4.25rem);
+  --text-title: clamp(1.5rem, 3vw, 2.125rem);
+
+  --radius-sm: 3px;
+  --radius: 5px;
+  --radius-lg: 8px;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-base);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    /* Tight tracking on display sizes only. Applying it to body copy is the single most
+       common way a "designed" interface becomes harder to read. */
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  /*
+   * Focus is neutral and unmissable. A brand-coloured ring would be one more hue competing
+   * with the status colours, and focus is a state rather than a status.
+   */
+  :focus-visible {
+    outline: 2px solid var(--color-fg);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Numerals line up in columns — addresses, chain ids, block numbers, counts. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /*
+   * A panel is a bordered rectangle on a slightly raised ground. That is the entire
+   * elevation system. There is no blur here: on /admin and /verify there is nothing behind
+   * a card to blur, so backdrop-filter there was paying full paint cost for no effect.
+   */
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+  }
+
+  /* The caret is the one piece of ambient motion left, and it is 2px wide. */
+  .caret {
+    display: inline-block;
+    width: 1px;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: var(--color-fg);
+    animation: caret-blink 1.1s steps(2, start) infinite;
+  }
+
+  @keyframes caret-blink {
+    to {
+      visibility: hidden;
+    }
+  }
+
+  /*
+   * The hero field sits behind the landing page only. Fixed rather than absolute so it does
+   * not grow the document, and pointer-events off so it never eats a click.
+   */
+  .hero-field {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /*
+   * The still tier: a fine engineering grid rather than a gradient wash. It reads as
+   * drafting paper, holds up at any size, and costs one repeating background.
+   */
+  .hero-field--static {
+    background-image:
+      linear-gradient(to right, var(--color-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--color-line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: 0.4;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 35%, #000 20%, transparent 75%);
+  }
+
+  /* Connection feedback. A ring that expands, not a glow that pulses. */
+  .pulse-rings {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+  }
+
+  .pulse-ring,
+  .pulse-rings--static::before {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid var(--color-line-strong);
+  }
+
+  .pulse-rings--static::before {
+    content: "";
+  }
+
+  /*
+   * Dialog enter/exit, keyed off Radix's data-state.
+   *
+   * Written here rather than pulled in as an animation plugin: it is twelve lines, and the
+   * reduced-motion block at the bottom of this file already neutralises it, which a
+   * third-party utility set would need to be audited for.
+   */
+  .dialog-overlay[data-state="open"] {
+    animation: overlay-in 160ms ease-out;
+  }
+
+  .dialog-overlay[data-state="closed"] {
+    animation: overlay-out 120ms ease-in;
+  }
+
+  .dialog-content[data-state="open"] {
+    animation: content-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .dialog-content[data-state="closed"] {
+    animation: content-out 120ms ease-in;
+  }
+
+  @keyframes overlay-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes overlay-out {
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes content-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, calc(-50% + 8px)) scale(0.98);
+    }
+  }
+
+  @keyframes content-out {
+    to {
+      opacity: 0;
+      transform: translate(-50%, calc(-50% + 4px)) scale(0.99);
+    }
+  }
+
+  .confetti {
+    position: absolute;
+    inset: 0;
+    display: block;
+    pointer-events: none;
+  }
+
+  .confetti-piece {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 5px;
+    height: 5px;
+  }
+}
+
+/*
+ * Defence in depth for prefers-reduced-motion.
+ *
+ * src/motion/ is the mechanism that matters — it also stops the particle loop and the GSAP
+ * timelines, which CSS cannot reach. This covers what CSS owns, including anything added
+ * later by someone who has not read that module.
+ *
+ * Near-zero rather than zero: some browsers skip transitionend entirely at 0s, and code
+ * waiting on that event would hang.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

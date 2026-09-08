@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useAccount, useDisconnect } from "wagmi";
 
+import { Button } from "@/components/ui/button";
+import { truncateAddress } from "@/lib/utils";
 import { ConnectModal } from "./ConnectModal";
-import { truncateAddress } from "./config";
 
 /**
  * Connect / connected control for the header.
  *
- * The connected state shows a truncated address rather than the full one. Not for secrecy —
- * an address is public — but because a 42-character string wrecks a header layout on a
- * phone, and the full value is available on hover and to a screen reader through the title.
+ * The connected state shows a truncated address in monospace with tabular figures, so the
+ * chip does not change width as the characters change. Truncation is for layout, not
+ * secrecy — an address is public — and the full value stays available through the title.
  */
 export function ConnectButton() {
   const [open, setOpen] = useState(false);
@@ -18,29 +19,25 @@ export function ConnectButton() {
 
   if (isConnected && address) {
     return (
-      <button
-        type="button"
-        className="btn btn--ghost account-chip"
+      <Button
+        variant="outline"
+        size="sm"
         onClick={() => disconnect()}
         title={`${address} — click to disconnect`}
         data-testid="account-chip"
+        className="gap-2"
       >
-        <span className="account-dot" aria-hidden="true" />
-        <span className="mono">{truncateAddress(address)}</span>
-      </button>
+        <span className="size-1.5 rounded-full bg-verified" aria-hidden="true" />
+        <span className="font-mono tabular text-[13px]">{truncateAddress(address)}</span>
+      </Button>
     );
   }
 
   return (
     <>
-      <button
-        type="button"
-        className="btn btn--primary"
-        onClick={() => setOpen(true)}
-        data-testid="connect-button"
-      >
+      <Button size="sm" onClick={() => setOpen(true)} data-testid="connect-button">
         Connect Wallet
-      </button>
+      </Button>
       <ConnectModal open={open} onClose={() => setOpen(false)} />
     </>
   );

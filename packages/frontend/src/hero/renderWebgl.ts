@@ -37,13 +37,15 @@ export async function startWebgl(canvas: HTMLCanvasElement): Promise<FieldHandle
   nodeGeometry.setAttribute("position", new THREE.BufferAttribute(nodePositions, 3));
 
   const nodeMaterial = new THREE.PointsMaterial({
-    color: 0xa78bfa,
-    size: 0.028,
+    // Neutral, and normal blending rather than additive.
+    //
+    // Additive blending is what produces the "glowing" particle look: overlapping points
+    // sum toward white and bloom. That reads as a screensaver. The field here is meant to
+    // read as a lattice under observation, so points stay a flat grey and simply overlap.
+    color: 0x8a8a93,
+    size: 0.016,
     transparent: true,
-    opacity: 0.9,
-    // Additive blending is what gives overlapping particles the bloom look without a
-    // post-processing pass, which would cost another full-screen render per frame.
-    blending: THREE.AdditiveBlending,
+    opacity: 0.75,
     depthWrite: false,
     sizeAttenuation: true,
   });
@@ -61,8 +63,7 @@ export async function startWebgl(canvas: HTMLCanvasElement): Promise<FieldHandle
   const linkMaterial = new THREE.LineBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.5,
-    blending: THREE.AdditiveBlending,
+    opacity: 0.34,
     depthWrite: false,
   });
 
@@ -120,12 +121,13 @@ export async function startWebgl(canvas: HTMLCanvasElement): Promise<FieldHandle
       linkPositions[p + 4] = b.y;
       linkPositions[p + 5] = b.z;
 
-      // Cyan, scaled by how close the pair is, so the mesh fades in and out at its edges
-      // instead of links popping into existence at full brightness.
+      // Neutral grey, scaled by how close the pair is, so the mesh fades in and out at its
+      // edges instead of links popping into existence at full brightness. Monochrome by
+      // design: colour in this product means status, and a decorative field has none.
       const s = link.strength;
-      const r = 0.13 * s;
-      const g = 0.82 * s;
-      const bl = 0.93 * s;
+      const r = 0.5 * s;
+      const g = 0.5 * s;
+      const bl = 0.55 * s;
       linkColors[p] = r;
       linkColors[p + 1] = g;
       linkColors[p + 2] = bl;

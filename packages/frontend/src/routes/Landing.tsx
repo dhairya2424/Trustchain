@@ -1,11 +1,13 @@
 import { motion as fm } from "framer-motion";
 import { Link } from "react-router-dom";
 
+import { NetworkBadge } from "../components/NetworkBadge";
+import { Button } from "@/components/ui/button";
+import { GridPatternCard, GridPatternCardBody } from "@/components/ui/grid-pattern-card";
 import { ParticleNetwork } from "../hero/ParticleNetwork";
 import { Typewriter } from "../hero/Typewriter";
-import { useMotion } from "../motion/MotionProvider";
+import { useMotion } from "@/motion/MotionProvider";
 import { useScrollReveal } from "../scroll/useScrollReveal";
-import { NetworkBadge } from "../components/NetworkBadge";
 import { ConnectButton } from "../wallet/ConnectButton";
 
 /**
@@ -14,129 +16,146 @@ import { ConnectButton } from "../wallet/ConnectButton";
  * The one screen where the product has to argue for itself before anyone has signed in, so
  * the three pillars below are the problem statement's own terms — identity, authority,
  * ownership — rather than a feature list.
+ *
+ * Laid out as a spec sheet: an index number, a rule, a claim. The restraint is the point —
+ * a page about verifiable records should look like a document, not a launch announcement.
  */
 
 const PILLARS = [
   {
     key: "identity",
+    index: "01",
     title: "Decentralized Identity",
     body: "A DID anchored on-chain, bound to a wallet the holder controls. No personal data is ever written to the ledger — only commitments that prove a claim without revealing it.",
   },
   {
     key: "rbac",
+    index: "02",
     title: "On-Chain RBAC",
     body: "ADMIN, MANAGER, AUDITOR, USER. Roles live in a contract, not a database, so authorization cannot be edited behind the audit trail's back — every grant and revocation is itself an event.",
   },
   {
     key: "ownership",
+    index: "03",
     title: "NFT Asset Ownership",
     body: "Assets are tokens with provenance. Metadata lives on IPFS, the chain holds the pointer, and every transfer leaves a record that outlives whoever ran the system.",
   },
 ] as const;
 
+const FLOW = [
+  {
+    n: "01",
+    title: "You sign",
+    body: "Your wallet signs a typed request. The key never leaves your device and the platform never asks for it.",
+  },
+  {
+    n: "02",
+    title: "The contract checks you",
+    body: "Authorization is evaluated against your address recovered from that signature — not the relayer's. A relayer that submits your transaction holds no power to act as you.",
+  },
+  {
+    n: "03",
+    title: "The trail records both",
+    body: "Every entry names the actor who asked and the executor who submitted. Who did it and who paid for it are different questions, and the audit trail answers both.",
+  },
+] as const;
+
+const SHELL = "mx-auto w-full max-w-[1200px] px-4 sm:px-6";
+
 export function Landing() {
   const motion = useMotion();
-  const pillarsRef = useScrollReveal<HTMLDivElement>({ childSelector: ".pillar" });
-  const flowRef = useScrollReveal<HTMLDivElement>({ y: 34 });
+  const pillarsRef = useScrollReveal<HTMLDivElement>({ y: 16, childSelector: ".pillar" });
+  const flowRef = useScrollReveal<HTMLDivElement>({ y: 20, childSelector: ".flow-row" });
 
   return (
-    <div className="landing">
+    <div className="relative">
       <ParticleNetwork />
 
-      <section className="hero shell">
+      <section className={`${SHELL} relative flex min-h-[78vh] items-center py-20`}>
         <fm.div
-          initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 22 }}
+          className="w-full"
+          initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={motion.transition("slow")}
         >
-          <p className="hero-eyebrow">
-            <span className="hero-dot" aria-hidden="true" />
+          <p className="mb-6 inline-flex items-center gap-2.5 border-l border-line-strong pl-3 text-[12px] uppercase tracking-[0.14em] text-fg-faint">
             Trust, made verifiable
           </p>
 
-          <h1 className="hero-title">
-            TrustChain
-            <span className="hero-title__sub">
-              <Typewriter text="Identity. Authority. Ownership. On one ledger." />
-            </span>
-          </h1>
+          <h1 className="max-w-[16ch] text-display font-semibold">TrustChain</h1>
 
-          <p className="hero-lead">
+          <p className="mt-4 min-h-[1.6em] max-w-[52ch] text-[clamp(1rem,2vw,1.3rem)] text-fg-muted">
+            <Typewriter text="Identity. Authority. Ownership. On one ledger." />
+          </p>
+
+          <p className="mt-7 max-w-[58ch] text-[15px] leading-relaxed text-fg-muted">
             A centralized IAM dashboard asks you to trust its database. TrustChain replaces that
             promise with a proof anyone can check.
           </p>
 
-          <div className="hero-actions">
+          <div className="mt-9 flex flex-wrap items-center gap-3">
             <ConnectButton />
-            <Link className="btn btn--ghost" to="/verify">
-              Verify a credential
-            </Link>
+            {/* asChild keeps this a real anchor: middle-clickable, copyable, announced as a link. */}
+            <Button asChild variant="outline">
+              <Link to="/verify">Verify a credential</Link>
+            </Button>
           </div>
 
-          <div className="hero-network">
-            <NetworkBadge />
+          <div className="mt-10 border-t border-line pt-5">
+            <NetworkBadge variant="full" />
           </div>
         </fm.div>
       </section>
 
-      <section className="shell section" ref={pillarsRef} aria-labelledby="pillars-title">
-        <h2 id="pillars-title" className="section-title">
-          Three guarantees, one ledger
-        </h2>
+      <section
+        className={`${SHELL} relative py-20`}
+        aria-labelledby="pillars-title"
+        ref={pillarsRef}
+      >
+        <div className="mb-10 flex items-baseline justify-between gap-4 border-b border-line pb-4">
+          <h2 id="pillars-title" className="text-title">
+            Three guarantees, one ledger
+          </h2>
+          <span className="hidden font-mono text-[12px] text-fg-faint sm:inline">001 / 003</span>
+        </div>
 
-        <div className="pillars">
+        <div className="grid gap-4 md:grid-cols-3">
           {PILLARS.map((pillar) => (
-            <article key={pillar.key} className="glass pillar">
-              <h3>{pillar.title}</h3>
-              <p>{pillar.body}</p>
-            </article>
+            <GridPatternCard key={pillar.key} className="pillar">
+              <GridPatternCardBody>
+                <span className="font-mono text-[12px] text-fg-faint">{pillar.index}</span>
+                <h3 className="mt-3 text-[16px] font-semibold">{pillar.title}</h3>
+                <p className="mt-2.5 text-[14px] leading-relaxed text-fg-muted">{pillar.body}</p>
+              </GridPatternCardBody>
+            </GridPatternCard>
           ))}
         </div>
       </section>
 
-      <section className="shell section" ref={flowRef} aria-labelledby="flow-title">
-        <h2 id="flow-title" className="section-title">
-          What happens when you act
-        </h2>
+      <section className={`${SHELL} relative py-20`} aria-labelledby="flow-title" ref={flowRef}>
+        <div className="mb-10 border-b border-line pb-4">
+          <h2 id="flow-title" className="text-title">
+            What happens when you act
+          </h2>
+        </div>
 
-        <ol className="flow">
-          <li className="glass flow-step">
-            <span className="flow-step__n" aria-hidden="true">
-              01
-            </span>
-            <div>
-              <h3>You sign</h3>
-              <p>
-                Your wallet signs a typed request. The key never leaves your device and the platform
-                never asks for it.
-              </p>
-            </div>
-          </li>
-          <li className="glass flow-step">
-            <span className="flow-step__n" aria-hidden="true">
-              02
-            </span>
-            <div>
-              <h3>The contract checks you</h3>
-              <p>
-                Authorization is evaluated against <em>your</em> address recovered from that
-                signature — not the relayer's. A relayer that submits your transaction holds no
-                power to act as you.
-              </p>
-            </div>
-          </li>
-          <li className="glass flow-step">
-            <span className="flow-step__n" aria-hidden="true">
-              03
-            </span>
-            <div>
-              <h3>The trail records both</h3>
-              <p>
-                Every entry names the actor who asked and the executor who submitted. Who did it and
-                who paid for it are different questions, and the audit trail answers both.
-              </p>
-            </div>
-          </li>
+        {/*
+          Rows divided by rules rather than floated as cards. Three steps in sequence are a
+          list, and a list reads better as a list.
+        */}
+        <ol className="border-t border-line">
+          {FLOW.map((step) => (
+            <li
+              key={step.n}
+              className="flow-row grid gap-x-8 gap-y-2 border-b border-line py-7 sm:grid-cols-[auto_1fr] md:grid-cols-[auto_18rem_1fr]"
+            >
+              <span className="font-mono text-[13px] text-fg-faint" aria-hidden="true">
+                {step.n}
+              </span>
+              <h3 className="text-[15px] font-semibold">{step.title}</h3>
+              <p className="max-w-[62ch] text-[14px] leading-relaxed text-fg-muted">{step.body}</p>
+            </li>
+          ))}
         </ol>
       </section>
     </div>

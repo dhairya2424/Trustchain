@@ -62,9 +62,3 @@ export function buildWagmiConfig() {
     ssr: false,
   });
 }
-
-/** Shortens an address for display: 0x1234…cdef. Never used where the full value matters. */
-export function truncateAddress(address: string): string {
-  if (address.length <= 12) return address;
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}

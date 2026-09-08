@@ -1,17 +1,20 @@
-import { AnimatePresence, motion as fm } from "framer-motion";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { motion as fm } from "framer-motion";
+import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useConnect, type Connector } from "wagmi";
 
-import { useMotion } from "../motion/MotionProvider";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { useMotion } from "@/motion/MotionProvider";
 import { CheckmarkDraw, ConfettiBurst, PulseRings } from "./ConnectFeedback";
 
 /**
  * The wallet picker.
  *
- * The animation brief is a staggered list, pulse rings while pending and a drawn checkmark
- * with a confetti burst on success. The parts that are not in the brief but decide whether
- * this is usable are focus containment, Escape, a labelled dialog and a live region — a
- * modal that traps a keyboard user is broken no matter how well it animates.
+ * Built on the Radix dialog primitive, which owns focus containment, focus restoration,
+ * Escape, scroll locking and `aria-hidden` on the rest of the document. An earlier version
+ * hand-rolled all of that; it worked, but it was reimplementing a list of things that are
+ * easy to get subtly wrong and impossible to notice without a screen reader.
  *
  * Connector state comes from wagmi rather than being tracked locally, so a connection
  * started here and one restored from a previous session cannot disagree.
@@ -38,15 +41,8 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("choosing");
 
-  const dialogRef = useRef<HTMLDivElement | null>(null);
-  const firstOptionRef = useRef<HTMLButtonElement | null>(null);
-  // Remembered so focus can go back where it came from on close, rather than to the top of
-  // the document — which would lose a keyboard user their place entirely.
-  const openerRef = useRef<HTMLElement | null>(null);
-
   useEffect(() => {
     if (open) {
-      openerRef.current = document.activeElement as HTMLElement | null;
       setPhase("choosing");
       setPendingId(null);
       reset();
@@ -85,60 +81,6 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
     return () => clearTimeout(timer);
   }, [phase, onClose, motion.reduced]);
 
-  // Focus the first option when the list appears, so the keyboard lands inside the dialog.
-  useEffect(() => {
-    if (open && phase === "choosing") {
-      const timer = setTimeout(() => firstOptionRef.current?.focus(), 40);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
-  }, [open, phase]);
-
-  const handleKeyDown = useCallback(
-    (event: React.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") return;
-
-      // Focus containment. Without this, Tab walks out of the dialog and into the page
-      // behind it, which is still rendered and still focusable.
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
-      if (!focusable || focusable.length === 0) return;
-
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    if (!open) {
-      openerRef.current?.focus();
-      return;
-    }
-
-    // The page behind must not scroll while a modal is over it.
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-
   const onPick = (connector: Connector) => {
     setPendingId(connector.uid);
     setPhase("pending");
@@ -148,125 +90,101 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
   const pendingConnector = connectors.find((c) => c.uid === pendingId);
 
   return (
-    <AnimatePresence>
-      {open && (
-        <fm.div
-          className="modal-scrim"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={motion.transition("quick")}
-          onClick={onClose}
-          data-testid="connect-scrim"
-        >
-          <fm.div
-            ref={dialogRef}
-            className="glass glass--lit modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="connect-title"
-            data-testid="connect-modal"
-            data-phase={phase}
-            initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 24, scale: 0.96 }}
-            animate={motion.reduced ? { opacity: 1 } : { opacity: 1, y: 0, scale: 1 }}
-            exit={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.97 }}
-            transition={motion.transition("base")}
-            onKeyDown={handleKeyDown}
-            // The scrim closes on click; the dialog must not, or every click inside would
-            // dismiss it.
-            onClick={(event) => event.stopPropagation()}
+    <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+      <DialogContent data-testid="connect-modal" data-phase={phase}>
+        <DialogTitle className="text-[17px] font-semibold tracking-tight">
+          {phase === "connected" ? "Wallet connected" : "Connect a wallet"}
+        </DialogTitle>
+
+        {/*
+          One live region for the whole flow. Announcements are text, so assistive
+          technology follows the same states the animation shows.
+        */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {phase === "pending" &&
+            `Connecting to ${pendingConnector ? connectorLabel(pendingConnector) : "wallet"}`}
+          {phase === "connected" && "Wallet connected"}
+          {status === "error" && error ? `Connection failed: ${error.message}` : ""}
+        </p>
+
+        {phase === "choosing" && (
+          <>
+            <DialogDescription className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+              Your wallet is your identity here. TrustChain never sees your keys — you sign, we
+              verify.
+            </DialogDescription>
+
+            <ul className="mt-5 grid gap-1.5">
+              {connectors.map((connector, index) => (
+                <fm.li
+                  key={connector.uid}
+                  initial={motion.reduced ? { opacity: 0 } : { opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={motion.transition("quick", motion.stagger(index, 0.06))}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onPick(connector)}
+                    data-testid={`wallet-option-${connector.id}`}
+                    className="group flex min-h-14 w-full items-center justify-between gap-3 rounded border border-line bg-base px-4 text-[14px] font-medium text-fg transition-colors hover:border-line-strong hover:bg-hover"
+                  >
+                    {connectorLabel(connector)}
+                    <ArrowRight
+                      className="size-4 shrink-0 text-fg-faint transition-colors group-hover:text-fg"
+                      aria-hidden="true"
+                    />
+                  </button>
+                </fm.li>
+              ))}
+            </ul>
+
+            {status === "error" && error && (
+              <p
+                className="mt-4 rounded border border-revoked/40 bg-revoked/8 px-3 py-2.5 text-[13px] text-revoked [overflow-wrap:anywhere]"
+                data-testid="connect-error"
+              >
+                {/*
+                  Rendered as text by React, never as markup. A wallet's error string is
+                  attacker-influencable in principle — a malicious injected provider
+                  controls it — so it is displayed, not interpreted.
+                */}
+                {error.message}
+              </p>
+            )}
+          </>
+        )}
+
+        {phase === "pending" && (
+          <div
+            className="flex flex-col items-center gap-5 py-8 text-center"
+            data-testid="connect-pending"
           >
-            <header className="modal-head">
-              <h2 id="connect-title">
-                {phase === "connected" ? "Wallet connected" : "Connect a wallet"}
-              </h2>
-              <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
-                ×
-              </button>
-            </header>
-
-            {/*
-              One live region for the whole flow. Announcements are text, so assistive
-              technology follows the same states the animation shows.
-            */}
-            <p className="sr-only" role="status" aria-live="polite">
-              {phase === "pending" &&
-                `Connecting to ${pendingConnector ? connectorLabel(pendingConnector) : "wallet"}`}
-              {phase === "connected" && "Wallet connected"}
-              {status === "error" && error ? `Connection failed: ${error.message}` : ""}
+            <PulseRings />
+            <p className="text-[14px] text-fg-muted">
+              Approve the connection in{" "}
+              <strong className="font-medium text-fg">
+                {pendingConnector ? connectorLabel(pendingConnector) : "your wallet"}
+              </strong>
             </p>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+          </div>
+        )}
 
-            {phase === "choosing" && (
-              <>
-                <p className="modal-lead">
-                  Your wallet is your identity here. TrustChain never sees your keys — you sign, we
-                  verify.
-                </p>
-
-                <ul className="wallet-list">
-                  {connectors.map((connector, index) => (
-                    <fm.li
-                      key={connector.uid}
-                      initial={motion.reduced ? { opacity: 0 } : { opacity: 0, x: -14 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={motion.transition("quick", motion.stagger(index, 0.07))}
-                    >
-                      <button
-                        type="button"
-                        ref={index === 0 ? firstOptionRef : undefined}
-                        className="wallet-option"
-                        onClick={() => onPick(connector)}
-                        data-testid={`wallet-option-${connector.id}`}
-                      >
-                        <span className="wallet-option__name">{connectorLabel(connector)}</span>
-                        <span className="wallet-option__arrow" aria-hidden="true">
-                          →
-                        </span>
-                      </button>
-                    </fm.li>
-                  ))}
-                </ul>
-
-                {status === "error" && error && (
-                  <p className="modal-error" data-testid="connect-error">
-                    {/*
-                      Rendered as text by React, never as markup. A wallet's error string is
-                      attacker-influencable in principle — a malicious dapp-injected provider
-                      can set it — so it is displayed, not interpreted.
-                    */}
-                    {error.message}
-                  </p>
-                )}
-              </>
-            )}
-
-            {phase === "pending" && (
-              <div className="modal-state" data-testid="connect-pending">
-                <PulseRings />
-                <p>
-                  Approve the connection in{" "}
-                  <strong>
-                    {pendingConnector ? connectorLabel(pendingConnector) : "your wallet"}
-                  </strong>
-                </p>
-                <button type="button" className="btn btn--ghost" onClick={onClose}>
-                  Cancel
-                </button>
-              </div>
-            )}
-
-            {phase === "connected" && (
-              <div className="modal-state modal-state--ok" data-testid="connect-success">
-                <span className="checkmark-wrap">
-                  <CheckmarkDraw />
-                  <ConfettiBurst />
-                </span>
-                <p>You're in.</p>
-              </div>
-            )}
-          </fm.div>
-        </fm.div>
-      )}
-    </AnimatePresence>
+        {phase === "connected" && (
+          <div
+            className="flex flex-col items-center gap-4 py-8 text-center"
+            data-testid="connect-success"
+          >
+            <span className="relative inline-flex items-center justify-center">
+              <CheckmarkDraw />
+              <ConfettiBurst />
+            </span>
+            <p className="text-[15px] font-medium text-verified">You&rsquo;re in.</p>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

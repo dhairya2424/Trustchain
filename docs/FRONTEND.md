@@ -6,8 +6,11 @@ has to argue for itself on a landing page before anyone has signed in. What foll
 that is built without the usual costs — an unusable page for anyone with motion sensitivity,
 a hot phone for anyone on mid-range hardware, and a wallet modal that traps a keyboard user.
 
-Stack: React 18, wagmi 3, viem, TanStack Query, react-router 7, Framer Motion, GSAP
-ScrollTrigger, three.js. TypeScript 6.0.3 across the monorepo.
+Stack: React 18, wagmi 3, viem, TanStack Query, react-router 7, Tailwind CSS 4, Radix UI,
+Framer Motion, GSAP ScrollTrigger, three.js. TypeScript 6.0.3 across the monorepo.
+
+Design language is documented separately in `docs/DESIGN.md` — read that first if you are
+about to add a screen.
 
 ## Routes
 

@@ -1,9 +1,17 @@
 /// <reference types="vitest" />
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+
+  // "@/..." resolves to src/. This is the convention every shadcn and 21st.dev component
+  // is written against, so a component's own imports work without being rewritten by hand.
+  resolve: {
+    alias: { "@": path.resolve(import.meta.dirname, "src") },
+  },
 
   // Primary control for "public keys only": Vite inlines nothing that is not
   // prefixed VITE_PUBLIC_, so a server-only variable cannot reach the bundle

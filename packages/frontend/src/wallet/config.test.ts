@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConnectors, SUPPORTED_CHAINS, truncateAddress } from "./config";
+import { buildConnectors, SUPPORTED_CHAINS } from "./config";
+import { truncateAddress } from "@/lib/utils";
 
 describe("buildConnectors", () => {
   it("always offers an injected connector, so a browser wallet works with no configuration", () => {

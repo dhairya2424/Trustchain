@@ -61,7 +61,8 @@ export function startCanvas2d(canvas: HTMLCanvasElement): FieldHandle {
       const b = nodes[link.b];
       if (!a || !b) continue;
 
-      ctx.strokeStyle = `rgba(34, 211, 238, ${(link.strength * 0.32).toFixed(3)})`;
+      // Neutral grey, matching the WebGL tier. Colour in this product means status.
+      ctx.strokeStyle = `rgba(150, 150, 160, ${(link.strength * 0.3).toFixed(3)})`;
       ctx.beginPath();
       ctx.moveTo(toScreenX(a.x), toScreenY(a.y));
       ctx.lineTo(toScreenX(b.x), toScreenY(b.y));
@@ -71,9 +72,9 @@ export function startCanvas2d(canvas: HTMLCanvasElement): FieldHandle {
     for (const node of nodes) {
       // z drives the radius so the flat render still reads as having depth.
       const depth = (node.z + 1) / 2;
-      ctx.fillStyle = `rgba(167, 139, 250, ${(0.25 + depth * 0.45).toFixed(3)})`;
+      ctx.fillStyle = `rgba(138, 138, 147, ${(0.28 + depth * 0.42).toFixed(3)})`;
       ctx.beginPath();
-      ctx.arc(toScreenX(node.x), toScreenY(node.y), 1 + depth * 1.6, 0, Math.PI * 2);
+      ctx.arc(toScreenX(node.x), toScreenY(node.y), 0.8 + depth * 1.2, 0, Math.PI * 2);
       ctx.fill();
     }
 

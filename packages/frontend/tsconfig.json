@@ -8,7 +8,10 @@
     "noEmit": true,
     "declaration": false,
     "allowImportingTsExtensions": true,
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    // No "baseUrl": it is deprecated in TypeScript 6, and unnecessary — "paths" now
+    // resolves relative to this file's directory, which is what we wanted anyway.
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "vite.config.ts"]
 }
