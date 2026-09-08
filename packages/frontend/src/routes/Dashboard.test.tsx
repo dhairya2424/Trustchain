@@ -38,7 +38,7 @@ function entry(over: Partial<AuditEntry> & { entryId: number; action: string }):
     refHash: "0xref",
     via: "0x2222222222222222222222222222222222222222",
     blockNumber: 1,
-    transactionHash: "0x3333333333333333333333333333333333333333333333333333333333333333",
+    transactionHash: "0x3333333333333333333333333333333333333333333333333333333333333333", // secrets-scan:allow inert fixture transaction hash, not a key
     occurredAt: new Date().toISOString(),
     ...over,
   };

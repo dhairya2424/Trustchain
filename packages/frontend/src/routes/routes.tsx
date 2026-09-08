@@ -1,32 +1,11 @@
 import { Placeholder } from "./Placeholder";
 
 /**
- * The remaining scaffold routes.
+ * The last scaffold route.
  *
- * Dashboard has moved to its own file now that it reads real data; these two are still
- * waiting on the phases that give them something true to show.
- *
- * Kept together because they are currently the same component with different copy. They
- * split into real pages as each phase lands, and doing that split now would be three files
- * of ceremony around no behaviour.
+ * Dashboard (P3.2) and Admin (P3.3) have both become real pages reading real data; only
+ * public credential verification is still waiting on its phase.
  */
-
-export function Admin() {
-  return (
-    <Placeholder
-      phase="Phase 3.3"
-      title="Administration"
-      lead="Role management and the audit trail, for ADMIN and AUDITOR."
-      requiresWallet
-      contents={[
-        "Grant and revoke ADMIN, MANAGER, AUDITOR and USER, each a transaction you sign",
-        "The audit trail with filtering by actor, action and date, paginated by cursor",
-        "CSV export, itself an audited action available only to ADMIN",
-        "Live network status, including whether writes are landing on Amoy or the local fallback",
-      ]}
-    />
-  );
-}
 
 export function Verify() {
   return (

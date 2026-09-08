@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 
 import { MotionProvider } from "../motion/MotionProvider";
+import { ToastProvider } from "@/components/ui/toast";
 import { buildWagmiConfig } from "../wallet/config";
 
 /**
@@ -35,7 +36,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <MotionProvider>
       <WagmiProvider config={config}>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>{children}</ToastProvider>
+        </QueryClientProvider>
       </WagmiProvider>
     </MotionProvider>
   );

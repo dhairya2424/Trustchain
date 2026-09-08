@@ -3,7 +3,11 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { NetworkBadge } from "./components/NetworkBadge";
 import { Landing } from "./routes/Landing";
 import { Dashboard } from "./routes/Dashboard";
-import { Admin, Verify } from "./routes/routes";
+import { AdminLayout } from "./admin/AdminLayout";
+import { AuditLog } from "./admin/AuditLog";
+import { MintWizard } from "./admin/MintWizard";
+import { RoleManager } from "./admin/RoleManager";
+import { Verify } from "./routes/routes";
 import { ConnectButton } from "./wallet/ConnectButton";
 import { cn } from "@/lib/utils";
 
@@ -90,7 +94,12 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/admin" element={<Admin />} />
+          {/* Nested so the rail persists and only the console swaps. */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AuditLog />} />
+            <Route path="mint" element={<MintWizard />} />
+            <Route path="roles" element={<RoleManager />} />
+          </Route>
           <Route path="/verify" element={<Verify />} />
           {/*
             An unknown path is a real answer, not a redirect to the landing page — sending

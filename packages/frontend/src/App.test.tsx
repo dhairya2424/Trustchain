@@ -26,9 +26,11 @@ describe("App routing", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
   });
 
-  it("serves the admin route", () => {
+  it("serves the admin console", () => {
+    // /admin is a real console now, not a scaffold — its own behaviour is covered in
+    // admin/admin.test.tsx. Here we only assert the route resolves to it.
     renderWithProviders(<App />, { ...options, route: "/admin" });
-    expect(screen.getByRole("heading", { level: 1, name: "Administration" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Admin console" })).toBeInTheDocument();
   });
 
   it("serves the public verify route", () => {
@@ -83,21 +85,14 @@ describe("App shell", () => {
 });
 
 describe("Placeholder routes", () => {
-  it("gates a wallet-scoped route behind a connect prompt", () => {
-    // /admin is still a scaffold. /dashboard is a real page now and has its own sign-in
-    // state, covered in Dashboard.test.tsx.
-    renderWithProviders(<App />, { ...options, route: "/admin" });
-    expect(screen.getByTestId("wallet-gate")).toBeInTheDocument();
-  });
-
   it("does not gate the public verify route", () => {
     // Verification is public by design — no wallet, no account, no sign-in.
     renderWithProviders(<App />, { ...options, route: "/verify" });
     expect(screen.queryByTestId("wallet-gate")).not.toBeInTheDocument();
   });
 
-  it("states what the route will contain rather than showing invented data", () => {
-    renderWithProviders(<App />, { ...options, route: "/admin" });
+  it("states what a scaffold route will contain rather than showing invented data", () => {
+    renderWithProviders(<App />, { ...options, route: "/verify" });
     expect(screen.getByRole("heading", { name: "Planned contents" })).toBeInTheDocument();
     expect(screen.getByText(/never a placeholder standing in for a record/)).toBeInTheDocument();
   });

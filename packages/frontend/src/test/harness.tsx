@@ -7,6 +7,7 @@ import { hardhat } from "wagmi/chains";
 import { mock } from "wagmi/connectors";
 
 import { MotionProvider } from "../motion/MotionProvider";
+import { ToastProvider } from "@/components/ui/toast";
 import { REDUCED_MOTION_QUERY } from "../motion/useReducedMotion";
 
 /**
@@ -95,9 +96,13 @@ export function renderWithProviders(ui: ReactElement, options: HarnessOptions = 
   });
 
   function Wrapper({ children }: { children: ReactNode }) {
+    // ToastProvider is inside MotionProvider for the same reason it is in the real tree:
+    // toasts animate, so they need the resolved motion scheme.
     const withMotion = (
       <MemoryRouter initialEntries={[route]}>
-        <MotionProvider>{children}</MotionProvider>
+        <MotionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </MotionProvider>
       </MemoryRouter>
     );
 
