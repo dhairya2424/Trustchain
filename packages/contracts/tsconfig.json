@@ -1,9 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // node18: CommonJS emit with modern resolution that honours package.json
+    // "exports". The old "node"/node10 pair is deprecated in TypeScript 6 and stops
+    // working in 7, and it cannot see the export maps most current packages ship.
+    "module": "node18",
     "outDir": "dist",
+    // Explicit because this package compiles from several top-level directories at once
+    // (scripts/, test/, hardhat.config.ts, typechain-types/). TypeScript 6 refuses to
+    // infer a common source directory that varies with which files are included.
+    "rootDir": ".",
     "declaration": false,
     "types": ["node", "mocha"]
   },

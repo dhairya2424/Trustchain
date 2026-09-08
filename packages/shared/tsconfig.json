@@ -1,8 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // node18: CommonJS emit with modern resolution that honours package.json
+    // "exports". The old "node"/node10 pair is deprecated in TypeScript 6 and stops
+    // working in 7, and it cannot see the export maps most current packages ship.
+    "module": "node18",
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"]

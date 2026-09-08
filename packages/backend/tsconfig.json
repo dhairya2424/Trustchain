@@ -1,8 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Deliberately still commonjs + node10 resolution, unlike shared/ and contracts/.
+    // The backend emits CommonJS ("start": node dist/index.js) and imports viem, which
+    // ships a dual build; under node16/node18 resolution TypeScript selects viem's ESM
+    // condition and then refuses the require(), even though the CommonJS build it would
+    // actually load at runtime is fine. Moving the backend to ESM is the real fix and is
+    // its own task — it needs "type": "module" plus explicit .js extensions on every
+    // relative import — so the TypeScript 6 deprecation is silenced rather than papered
+    // over with a resolution mode that misdescribes what this package does.
     "module": "commonjs",
     "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"]
