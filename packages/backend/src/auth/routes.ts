@@ -239,6 +239,60 @@ export function createAuthRouter(deps: AuthDependencies): Router {
     }),
   );
 
+  /**
+   * Reads back the current session.
+   *
+   * `POST /auth/verify` already returns identity, but only once. The session itself lives
+   * in an httpOnly cookie that script deliberately cannot read, so after a page reload the
+   * app knows it is signed in — the cookie still rides along — while having no way to say
+   * who as. Without this the dashboard would have to make someone sign a SIWE message again
+   * just to redisplay their own DID.
+   *
+   * This grants no new authority. It verifies the same access token every gated route
+   * verifies and returns exactly the claims that token already carries, so anything learned
+   * here was already sufficient to make the request. Mutations still re-read the chain
+   * through `requirePermission`, because a token minted before a revocation keeps the
+   * revoked role until it expires — these claims are enough to decide what to *show*
+   * someone, and deliberately not enough to authorise a change.
+   *
+   * 401 rather than an empty body when unauthenticated: "who am I" has no neutral answer,
+   * and a 200 with nulls invites a caller to treat the absence as a valid session.
+   */
+  router.get(
+    "/session",
+    asyncHandler(async (req, res) => {
+      const token = req.cookies?.[ACCESS_COOKIE];
+      if (!token) {
+        res.status(401).json({ error: "unauthenticated" });
+        return;
+      }
+
+      try {
+        const payload = await deps.tokens.verifyAccessToken(token);
+        const address = payload.sub;
+
+        if (typeof address !== "string" || address.length === 0) {
+          res.status(401).json({ error: "unauthenticated" });
+          return;
+        }
+
+        const roles = Array.isArray(payload.roles)
+          ? (payload.roles as unknown[]).filter((role): role is string => typeof role === "string")
+          : [];
+
+        res.json({
+          address,
+          did: typeof payload.did === "string" ? payload.did : null,
+          roles,
+        });
+      } catch {
+        // An expired or tampered cookie is the same answer as no cookie. Distinguishing
+        // them would tell an attacker whether a token was ever valid.
+        res.status(401).json({ error: "unauthenticated" });
+      }
+    }),
+  );
+
   router.post(
     "/logout",
     asyncHandler(async (req, res) => {

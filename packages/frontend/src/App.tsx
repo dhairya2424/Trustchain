@@ -2,7 +2,8 @@ import { NavLink, Route, Routes } from "react-router-dom";
 
 import { NetworkBadge } from "./components/NetworkBadge";
 import { Landing } from "./routes/Landing";
-import { Admin, Dashboard, Verify } from "./routes/routes";
+import { Dashboard } from "./routes/Dashboard";
+import { Admin, Verify } from "./routes/routes";
 import { ConnectButton } from "./wallet/ConnectButton";
 import { cn } from "@/lib/utils";
 

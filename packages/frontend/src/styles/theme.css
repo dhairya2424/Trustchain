@@ -236,6 +236,34 @@
     }
   }
 
+  /*
+   * Loading shimmer: a highlight sweeping across a flat block.
+   *
+   * It says "arriving" rather than "empty", which matters most for IPFS images where a
+   * gateway can take seconds and a blank square reads as a broken asset. The global
+   * reduced-motion block stops the sweep, and `Skeleton` also omits the class outright in
+   * that case so the element is genuinely static rather than animating imperceptibly.
+   */
+  .skeleton-shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 4%) 50%,
+      transparent 100%
+    );
+    animation: skeleton-sweep 1.4s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-sweep {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
   .confetti {
     position: absolute;
     inset: 0;

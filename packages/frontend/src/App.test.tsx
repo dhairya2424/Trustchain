@@ -84,7 +84,9 @@ describe("App shell", () => {
 
 describe("Placeholder routes", () => {
   it("gates a wallet-scoped route behind a connect prompt", () => {
-    renderWithProviders(<App />, { ...options, route: "/dashboard" });
+    // /admin is still a scaffold. /dashboard is a real page now and has its own sign-in
+    // state, covered in Dashboard.test.tsx.
+    renderWithProviders(<App />, { ...options, route: "/admin" });
     expect(screen.getByTestId("wallet-gate")).toBeInTheDocument();
   });
 

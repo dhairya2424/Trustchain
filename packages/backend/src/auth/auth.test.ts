@@ -508,3 +508,84 @@ describe("GET /auth/nonce", () => {
     expect(new Date(first.body.expiresAt).getTime()).toBeGreaterThan(Date.now());
   });
 });
+
+describe("GET /auth/session", () => {
+  let h: Harness;
+  beforeEach(async () => {
+    h = await buildHarness();
+  });
+
+  /** Signs in and returns the access cookie a browser would then send back. */
+  async function sessionCookie(): Promise<string> {
+    const { message, signature } = await signIn(h);
+    const res = await request(h.app)
+      .post("/auth/verify")
+      .send({ message, signature, turnstileToken: "ok" });
+    return `${ACCESS_COOKIE}=${cookieValue(res, ACCESS_COOKIE)}`;
+  }
+
+  it("returns the signed-in identity, so a reload need not re-sign", async () => {
+    // The whole reason this route exists: the session is an httpOnly cookie, so after a
+    // reload the app is authenticated but has no way to say who it is.
+    const cookie = await sessionCookie();
+
+    const res = await request(h.app).get("/auth/session").set("Cookie", cookie);
+
+    expect(res.status).toBe(200);
+    expect(res.body.address.toLowerCase()).toBe(account.address.toLowerCase());
+    expect(res.body.did).toBe(ALICE_DID);
+    expect(res.body.roles).toEqual([ADMIN_ROLE]);
+  });
+
+  it("refuses a request with no session rather than answering with nulls", async () => {
+    // A 200 carrying nulls invites a caller to treat "not signed in" as a valid session.
+    const res = await request(h.app).get("/auth/session");
+
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("unauthenticated");
+  });
+
+  it("refuses a forged token", async () => {
+    const res = await request(h.app)
+      .get("/auth/session")
+      .set("Cookie", `${ACCESS_COOKIE}=not.a.real.token`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("gives a tampered token the same answer as no token at all", async () => {
+    // Distinguishing them would tell an attacker whether a token was ever valid.
+    const cookie = await sessionCookie();
+    const tampered = `${cookie.slice(0, -2)}xy`;
+
+    const forged = await request(h.app).get("/auth/session").set("Cookie", tampered);
+    const absent = await request(h.app).get("/auth/session");
+
+    expect(forged.status).toBe(absent.status);
+    expect(forged.body).toEqual(absent.body);
+  });
+
+  it("treats the refresh cookie as no session, since only the access token is one", async () => {
+    const { message, signature } = await signIn(h);
+    const verified = await request(h.app)
+      .post("/auth/verify")
+      .send({ message, signature, turnstileToken: "ok" });
+
+    const res = await request(h.app)
+      .get("/auth/session")
+      .set("Cookie", `${REFRESH_COOKIE}=${cookieValue(verified, REFRESH_COOKIE)}`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("grants no authority beyond what the presented token already carried", async () => {
+    // Everything returned is a claim inside the token the caller already sent, so this
+    // route cannot be a privilege escalation — it is a read of the request's own
+    // credential. Pinned as a contract so a later edit cannot quietly widen it.
+    const cookie = await sessionCookie();
+
+    const res = await request(h.app).get("/auth/session").set("Cookie", cookie);
+
+    expect(Object.keys(res.body).sort()).toEqual(["address", "did", "roles"]);
+  });
+});
