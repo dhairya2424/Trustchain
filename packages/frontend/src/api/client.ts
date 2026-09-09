@@ -14,6 +14,15 @@ export class ApiError extends Error {
     /** The API's machine-readable `error` field, when it sent one. */
     readonly code: string | null,
     message: string,
+    /**
+     * Validation detail, when the API rejected the request shape.
+     *
+     * These were being thrown away, which is how the admin console spent its life showing
+     * "invalid_request" and nothing else — while the server was saying, in the same
+     * response, exactly which field was wrong. Server-generated and describing our own
+     * request, so there is nothing here an attacker supplies.
+     */
+    readonly issues: string[] = [],
   ) {
     super(message);
     this.name = "ApiError";
@@ -52,14 +61,23 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
 
   if (!response.ok) {
     let code: string | null = null;
+    let issues: string[] = [];
     try {
-      const body = (await response.json()) as { error?: unknown };
+      const body = (await response.json()) as { error?: unknown; issues?: unknown };
       if (typeof body.error === "string") code = body.error;
+      if (Array.isArray(body.issues)) {
+        issues = body.issues.filter((issue): issue is string => typeof issue === "string");
+      }
     } catch {
       // A non-JSON error body is not itself an error worth surfacing.
     }
 
-    throw new ApiError(response.status, code, code ?? `Request failed (${response.status})`);
+    throw new ApiError(
+      response.status,
+      code,
+      code ?? `Request failed (${response.status})`,
+      issues,
+    );
   }
 
   return (await response.json()) as T;

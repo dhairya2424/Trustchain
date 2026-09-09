@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
 import { actionLabel, type AuditEntry } from "@/api/queries";
 import { ApiError } from "@/api/client";
+import { useNetwork } from "@/api/queries";
 import { useMotion } from "@/motion/MotionProvider";
 import { truncateAddress } from "@/lib/utils";
 
@@ -31,6 +32,8 @@ export interface ActivityFeedProps {
 
 export function ActivityFeed({ entries, isLoading, error }: ActivityFeedProps) {
   const motion = useMotion();
+  // Which chain these landed on, and so whether each one can be linked to.
+  const explorerUrl = useNetwork().data?.active?.explorerUrl ?? null;
 
   if (error) return <ActivityError error={error} />;
 
@@ -97,8 +100,33 @@ export function ActivityFeed({ entries, isLoading, error }: ActivityFeedProps) {
               {formatWhen(event.occurredAt)}
             </time>
 
+            {/*
+              Each row links to its own transaction.
+              
+              The point of an audit trail on a public chain is that a reader does not have
+              to accept this list as given — they can open any row on a block explorer and
+              read the same event from a source we do not control. Without the link the row
+              is a claim; with it, it is a citation.
+              
+              Rendered plainly on a chain that has no explorer, because a dead link would
+              imply an independence that does not exist there.
+            */}
             <span className="w-full font-mono text-2xs text-fg-faint">
-              block {event.blockNumber} · {truncateAddress(event.transactionHash)}
+              block {event.blockNumber} ·{" "}
+              {explorerUrl ? (
+                <a
+                  className="underline underline-offset-4 transition-colors hover:text-fg"
+                  href={`${explorerUrl}/tx/${event.transactionHash}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  title={event.transactionHash}
+                  data-testid="activity-explorer-link"
+                >
+                  {truncateAddress(event.transactionHash)} ↗
+                </a>
+              ) : (
+                <span title={event.transactionHash}>{truncateAddress(event.transactionHash)}</span>
+              )}
             </span>
           </fm.li>
         ))}

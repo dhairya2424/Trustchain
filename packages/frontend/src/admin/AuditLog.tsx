@@ -4,6 +4,7 @@ import { AnimatePresence, motion as fm } from "framer-motion";
 import { useMemo, useRef, useState } from "react";
 
 import { ApiError, apiGet } from "@/api/client";
+import { humanError } from "@/api/errors";
 import {
   ACTION_LABELS,
   actionLabel,
@@ -40,6 +41,17 @@ const EMPTY: Filters = { actor: "", action: "", from: "", to: "" };
 const ROW_HEIGHT = 56;
 const LIVE_INTERVAL_MS = 10_000;
 
+/**
+ * The API's own ceiling on `limit`, from the shared pagination schema.
+ *
+ * This console asked for 200, and the API rejects anything above 100 — so every request it
+ * made returned 400 `invalid_request` and the audit log never loaded at all against a real
+ * backend. The number is repeated here rather than imported because the frontend does not
+ * depend on @trustchain/shared, and adding that dependency to carry one integer would pull
+ * zod into the bundle. The test beside this file is what keeps the two honest.
+ */
+const API_MAX_LIMIT = 100;
+
 function toParams(filters: Filters, limit: number): string {
   const params = new URLSearchParams({ limit: String(limit) });
   if (filters.actor.trim()) params.set("actor", filters.actor.trim());
@@ -70,7 +82,8 @@ export function AuditLog() {
 
   const query = useQuery<AuditPage, ApiError>({
     queryKey: ["audit", "console", applied],
-    queryFn: ({ signal }) => apiGet<AuditPage>(`/audit?${toParams(applied, 200)}`, signal),
+    queryFn: ({ signal }) =>
+      apiGet<AuditPage>(`/audit?${toParams(applied, API_MAX_LIMIT)}`, signal),
     retry: false,
     ...(live ? { refetchInterval: LIVE_INTERVAL_MS } : {}),
     placeholderData: (previous) => previous,
@@ -422,8 +435,25 @@ function AuditError({ error }: { error: ApiError }) {
           ? "Reading the audit trail needs the VIEW_AUDIT permission, which your roles do not include. The records exist; this account is not authorized to read them."
           : error.isUnavailable
             ? "No blockchain network is currently usable, so there is nothing to read from. That is an availability problem, not an empty log."
-            : error.message}
+            : humanError(error).message}
       </p>
+
+      {/*
+        What the server actually objected to.
+        
+        Only shown when it said. This console requested a page size the API refuses and got
+        back "invalid_request" with the reason attached — and the reason was discarded, so
+        the screen said nothing useful for as long as the bug existed.
+      */}
+      {error.issues.length > 0 && (
+        <ul className="mx-auto mt-3 max-w-[50ch] space-y-1 text-left" data-testid="audit-issues">
+          {error.issues.map((issue) => (
+            <li key={issue} className="font-mono text-2xs text-fg-faint">
+              {issue}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

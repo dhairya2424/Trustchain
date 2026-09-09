@@ -7,12 +7,14 @@ import { NetworkBadge } from "@/components/NetworkBadge";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 import { env } from "@/config/env";
-import { humanErrorText } from "@/api/errors";
+import { apiGet } from "@/api/client";
+import { humanError, humanErrorText } from "@/api/errors";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn } from "@/lib/utils";
 import { ProvenanceTimeline } from "@/verify/ProvenanceTimeline";
 import { QrScanner, isQrSupported } from "@/verify/QrScanner";
 import { ScanBeam } from "@/verify/ScanBeam";
+import { IdentityVerdict, type ResolvedIdentity } from "@/verify/IdentityVerdict";
 import { VerdictBanner } from "@/verify/VerdictBanner";
 import { buildTimeline, classifyInput, decideVerdict, type VerifyResponse } from "@/verify/verdict";
 
@@ -39,6 +41,34 @@ type Phase = "idle" | "verifying" | "done" | "error";
 
 const SHELL = "shell shell-reading";
 
+/**
+ * Pulls a DID out of a scanned value, or returns null.
+ *
+ * Accepts the verification URL the identity card encodes, and a bare DID hash for anyone
+ * who pastes one directly. Deliberately strict about shape: a 32-byte hex value is also
+ * what a credential hash looks like, so only the `did` parameter — or an explicit
+ * `did:` prefix — is treated as an identity. Guessing wrong would answer the wrong question
+ * with full confidence.
+ */
+export function didFromScan(value: string): string | null {
+  const trimmed = value.trim();
+
+  try {
+    const url = new URL(trimmed);
+    const did = url.searchParams.get("did");
+    if (did && /^0x[0-9a-fA-F]{64}$/.test(did)) return did;
+  } catch {
+    // Not a URL. Fall through to the prefixed form.
+  }
+
+  if (/^did:/i.test(trimmed)) {
+    const tail = trimmed.split(":").pop() ?? "";
+    if (/^0x[0-9a-fA-F]{64}$/.test(tail)) return tail;
+  }
+
+  return null;
+}
+
 export function Verify() {
   const motion = useMotion();
   const [params, setParams] = useSearchParams();
@@ -48,6 +78,8 @@ export function Verify() {
   const [response, setResponse] = useState<VerifyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  // A scanned identity QR resolves here rather than at the credential endpoint.
+  const [identity, setIdentity] = useState<ResolvedIdentity | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Guards the auto-verify so a re-render cannot fire a second request for the same link.
@@ -111,9 +143,36 @@ export function Verify() {
     }
   }, []);
 
-  // One-click from a shared link.
+  // One-click from a shared link, for either kind of subject.
   useEffect(() => {
     if (autoRan.current) return;
+
+    /*
+     * A DID link resolves an identity; a hash or JWT verifies a credential.
+     *
+     * These are genuinely different questions — "is this person who they claim" versus "is
+     * this document real" — and collapsing them into one endpoint would mean answering one
+     * while appearing to answer the other.
+     */
+    const did = params.get("did");
+    if (did) {
+      autoRan.current = true;
+      setPhase("verifying");
+      setError(null);
+
+      void (async () => {
+        try {
+          const resolved = await apiGet<ResolvedIdentity>(`/identity/${did}`);
+          setIdentity(resolved);
+          setPhase("done");
+        } catch (caught) {
+          setIdentity(null);
+          setPhase("idle");
+          setError(humanError(caught).message);
+        }
+      })();
+      return;
+    }
 
     const fromLink = params.get("hash") ?? params.get("jwt");
     if (!fromLink) return;
@@ -122,6 +181,42 @@ export function Verify() {
     setInput(fromLink);
     void verify(fromLink);
   }, [params, verify]);
+
+  /**
+   * What a scanned code turns out to be.
+   *
+   * Identity QRs carry a full verification URL, not a bare identifier — that is what makes
+   * them scannable by an ordinary phone camera rather than only by this page. So a scan can
+   * produce a URL, and feeding that to the credential verifier would report "neither a
+   * credential hash nor a JWT" about something perfectly valid.
+   *
+   * The DID is taken from the link's query string rather than by pattern-matching the whole
+   * string, so a URL that merely happens to contain hex is not mistaken for an identity.
+   */
+  const handleScanned = useCallback(
+    async (value: string) => {
+      const did = didFromScan(value);
+      if (did) {
+        setResponse(null);
+        setPhase("verifying");
+        setError(null);
+        try {
+          setIdentity(await apiGet<ResolvedIdentity>(`/identity/${did}`));
+          setPhase("done");
+        } catch (caught) {
+          setIdentity(null);
+          setPhase("error");
+          setError(humanError(caught).message);
+        }
+        return;
+      }
+
+      setIdentity(null);
+      setInput(value);
+      await verify(value);
+    },
+    [verify],
+  );
 
   const verdict = useMemo(() => (response ? decideVerdict(response) : null), [response]);
   const timeline = useMemo(() => (response ? buildTimeline(response) : []), [response]);
@@ -220,8 +315,7 @@ export function Verify() {
           <QrScanner
             onResult={(value) => {
               setScanning(false);
-              setInput(value);
-              void verify(value);
+              void handleScanned(value);
             }}
             onClose={() => setScanning(false)}
           />
@@ -241,6 +335,15 @@ export function Verify() {
           <p className="relative text-base text-fg-muted">Checking the signature and the chain…</p>
         </div>
       )}
+
+      {/*
+        An identity, resolved from a scanned QR or a shared ?did= link.
+
+        Rendered instead of the credential verdict, not alongside it: a page answering two
+        different questions at once would leave the reader unsure which one the big word at
+        the top refers to.
+      */}
+      {phase === "done" && identity && <IdentityVerdict identity={identity} />}
 
       {phase === "done" && verdict && response && (
         <fm.div

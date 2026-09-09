@@ -80,6 +80,67 @@ describe("AdminLayout", () => {
 });
 
 describe("AuditLog", () => {
+  it("never asks for a page larger than the API accepts", async () => {
+    /*
+     * The console asked for limit=200. The API's shared pagination schema caps it at 100,
+     * so every request returned 400 `invalid_request` and the audit log never loaded at all
+     * against a real backend — the page rendered its frame and nothing inside it, which on
+     * a dark theme reads as a blank screen.
+     *
+     * The two numbers live in different packages and cannot be imported across, so this is
+     * what keeps them honest.
+     */
+    const API_MAX_LIMIT = 100;
+    const requested: string[] = [];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/audit")) {
+          requested.push(url);
+          const limit = Number(new URL(url, "http://x").searchParams.get("limit"));
+          if (limit > API_MAX_LIMIT) {
+            return Response.json(
+              { error: "invalid_request", issues: [`limit: too big; maximum ${API_MAX_LIMIT}`] },
+              { status: 400 },
+            );
+          }
+        }
+        return Response.json({ entries: [], nextCursor: null, source: "index" });
+      }),
+    );
+
+    renderWithProviders(<AuditLog />, { wagmi: true });
+
+    await waitFor(() => expect(requested.length).toBeGreaterThan(0));
+
+    for (const url of requested) {
+      const limit = Number(new URL(url, "http://x").searchParams.get("limit"));
+      expect(limit).toBeLessThanOrEqual(API_MAX_LIMIT);
+    }
+
+    // And nothing rejected it, so no error panel.
+    expect(screen.queryByTestId("audit-error")).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows what the server objected to, not just that it objected", async () => {
+    // "invalid_request" alone is what this screen used to say while the server was, in the
+    // same response, naming the exact field that was wrong.
+    mockApi({
+      "/audit": {
+        status: 400,
+        body: { error: "invalid_request", issues: ["limit: Number must be <= 100"] },
+      },
+    });
+
+    renderWithProviders(<AuditLog />, { wagmi: true });
+
+    await waitFor(() => expect(screen.getByTestId("audit-error")).toBeInTheDocument());
+    expect(screen.getByTestId("audit-issues")).toHaveTextContent("limit");
+  });
+
   it("reports a missing permission as permission rather than emptiness", async () => {
     mockApi({ "/audit": { status: 403, body: { error: "forbidden" } } });
 

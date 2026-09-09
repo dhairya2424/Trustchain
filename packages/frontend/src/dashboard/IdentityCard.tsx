@@ -35,6 +35,18 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
   const motion = useMotion();
   const [interactive, setInteractive] = useState(false);
 
+  /*
+   * Where the QR points.
+   *
+   * Built from the running origin rather than a configured base URL, so a code scanned from
+   * a laptop screen opens the same deployment the reader is looking at. A hardcoded
+   * production URL would send someone verifying a local demo to a server that has never
+   * heard of the identity.
+   */
+  const verifyUrl = session.did
+    ? `${globalThis.location?.origin ?? ""}/verify?did=${session.did}`
+    : null;
+
   // Raw pointer position, -0.5..0.5 on each axis.
   const px = useMotionValue(0);
   const py = useMotionValue(0);
@@ -139,10 +151,18 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
           </div>
 
           {/*
-            The QR encodes the DID and nothing else. Rendered as SVG so it stays sharp at
-            any size and needs no canvas.
+            The QR encodes a resolvable link, not the identifier alone.
+            
+            It used to encode the bare DID hash, which scans to a hex string and leads
+            nowhere — a phone camera reads it and offers to copy some text. That is a
+            picture of a QR code rather than a working one. It now carries the public
+            verification URL for this identity, so pointing any camera at it opens a page
+            that resolves the DID against the chain and reports its controller, roles and
+            holdings.
+            
+            Rendered as SVG so it stays sharp at any size and needs no canvas.
           */}
-          {session.did && (
+          {session.did && verifyUrl && (
             <fm.div
               className="shrink-0 rounded border border-line bg-canvas p-2.5"
               initial={motion.reduced ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
@@ -152,12 +172,14 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
               style={interactive ? { transform: "translateZ(28px)" } : undefined}
             >
               <QRCodeSVG
-                value={session.did}
+                value={verifyUrl}
                 size={96}
                 bgColor="transparent"
                 fgColor="#ececee"
-                level="M"
-                title={`QR code for ${session.did}`}
+                // A URL is longer than a bare hash, so the error correction level is raised
+                // to keep it readable when printed small or scanned at an angle.
+                level="Q"
+                title={`Scan to verify ${session.did}`}
               />
             </fm.div>
           )}

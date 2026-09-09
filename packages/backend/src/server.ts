@@ -6,6 +6,7 @@ import { createAssetRouter, type AssetDependencies } from "./assets/routes";
 import { createAuditRouter, type AuditDependencies } from "./audit/routes";
 import { createNetworkRouter, type NetworkDependencies } from "./chain/routes";
 import { createStreamRouter, type StreamDependencies } from "./stream/routes";
+import { createIdentityRouter, type IdentityDependencies } from "./identity/routes";
 import { createAuthRouter, type AuthDependencies } from "./auth/routes";
 import { createCredentialRouter, type CredentialDependencies } from "./credentials/routes";
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
@@ -34,6 +35,8 @@ export interface ServerOptions {
   roles?: RoleDependencies;
   /** Server-sent events: confirmed chain activity, pushed rather than polled. */
   stream?: StreamDependencies;
+  /** Public DID resolution. No session — a DID only its issuer can resolve is not one. */
+  identity?: IdentityDependencies;
   logger?: Logger;
   security?: SecurityOptions;
   /**
@@ -113,6 +116,10 @@ export function createServer(options: ServerOptions = {}): Express {
 
   if (options.network) {
     app.use("/network", createNetworkRouter(options.network));
+  }
+
+  if (options.identity) {
+    app.use("/identity", createIdentityRouter(options.identity));
   }
 
   if (options.stream) {

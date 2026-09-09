@@ -4,13 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 
 /**
- * QR scanning, via the browser's own `BarcodeDetector`.
+ * QR scanning: the browser's own decoder where it exists, a loaded one where it does not.
  *
- * No dependency: a QR decoding library is 40–200 kB that most visitors never use, and
- * Chrome and Edge on Android and desktop ship a detector already. Where it is missing —
- * Safari and Firefox at time of writing — this says so plainly and the paste field beside
- * it does the same job. That is a better trade than shipping a decoder to everyone so that
- * a minority need not paste.
+ * This used to be BarcodeDetector only, on the reasoning that "Chrome and Edge on Android
+ * and desktop ship a detector already" and a decoding library was weight most visitors
+ * would never use. The first half of that is wrong: BarcodeDetector is part of the Shape
+ * Detection API, and on **Windows** Chrome does not expose it. Verified by decoding in a
+ * real Chrome on Windows and getting nothing. So scanning was simply unavailable to a large
+ * share of desktop users, who saw "this browser has no QR decoder" and had to type a hash
+ * by hand.
+ *
+ * The weight argument still holds, so the decoder is *dynamically imported* and only when
+ * the native one is missing. Browsers that ship a detector download nothing; the rest get a
+ * working scanner instead of an apology.
  *
  * Two things it is careful about, both about not holding a camera it is not using:
  *   - every track is stopped on unmount and on a successful read, so the camera light goes
@@ -27,8 +33,61 @@ interface WindowWithDetector extends Window {
   BarcodeDetector?: new (options?: { formats?: string[] }) => BarcodeDetectorLike;
 }
 
+/**
+ * Whether scanning can be offered at all.
+ *
+ * Now a question about the camera rather than the decoder, since a decoder can always be
+ * loaded. Without `getUserMedia` there is no image to decode and the button would open a
+ * panel that could only apologise.
+ */
 export function isQrSupported(): boolean {
-  return typeof window !== "undefined" && "BarcodeDetector" in window;
+  return (
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia)
+  );
+}
+
+/** Decodes one frame. Returns the payload, or null when the frame holds no code. */
+type FrameDecoder = (video: HTMLVideoElement) => Promise<string | null>;
+
+/**
+ * The native detector, or jsQR loaded on demand.
+ *
+ * jsQR needs pixels rather than a video element, so the frame is drawn to an offscreen
+ * canvas first. The canvas is created once and reused: allocating one per frame at 60fps
+ * produces exactly the garbage-collection pauses that make a scanner feel broken.
+ */
+async function buildDecoder(): Promise<FrameDecoder> {
+  const native = (window as WindowWithDetector).BarcodeDetector;
+
+  if (native) {
+    const detector = new native({ formats: ["qr_code"] });
+    return async (video) => {
+      const found = await detector.detect(video);
+      return found[0]?.rawValue?.trim() ?? null;
+    };
+  }
+
+  const { default: jsQR } = await import("jsqr");
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  return async (video) => {
+    if (!context || !video.videoWidth) return null;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const image = context.getImageData(0, 0, canvas.width, canvas.height);
+    // "attemptBoth" reads codes shown on a screen as well as printed ones — a demo is as
+    // likely to be scanning a laptop display as a badge.
+    const result = jsQR(image.data, image.width, image.height, {
+      inversionAttempts: "attemptBoth",
+    });
+    return result?.data?.trim() ?? null;
+  };
 }
 
 export interface QrScannerProps {
@@ -41,12 +100,6 @@ export function QrScanner({ onResult, onClose }: QrScannerProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const detectorCtor = (window as WindowWithDetector).BarcodeDetector;
-    if (!detectorCtor) {
-      setError("This browser has no QR decoder. Paste the credential instead.");
-      return;
-    }
-
     let stream: MediaStream | null = null;
     let frame = 0;
     let stopped = false;
@@ -81,14 +134,22 @@ export function QrScanner({ onResult, onClose }: QrScannerProps) {
       video.srcObject = stream;
       await video.play().catch(() => {});
 
-      const detector = new detectorCtor({ formats: ["qr_code"] });
+      let decode: FrameDecoder;
+      try {
+        decode = await buildDecoder();
+      } catch {
+        setError("The QR decoder could not be loaded. Paste the credential instead.");
+        stop();
+        return;
+      }
+
+      if (stopped) return;
 
       const tick = async () => {
         if (stopped || !videoRef.current) return;
 
         try {
-          const found = await detector.detect(videoRef.current);
-          const value = found[0]?.rawValue?.trim();
+          const value = await decode(videoRef.current);
           if (value) {
             stop();
             onResult(value);
