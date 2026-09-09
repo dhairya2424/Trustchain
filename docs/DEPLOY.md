@@ -10,7 +10,7 @@ externally owned account can administer them** — step 7 is the one that proves
 
 | Item                | Notes                                                                                                                                                                                             |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Funded deployer key | ~0.5 POL on Amoy covers all five contracts plus wiring                                                                                                                                            |
+| Funded deployer key | ~0.5 POL on Amoy covers all six contracts plus wiring                                                                                                                                             |
 | Alchemy RPC URL     | Amoy endpoint                                                                                                                                                                                     |
 | Polygonscan API key | For source verification                                                                                                                                                                           |
 | Safe{Wallet} 2-of-3 | **Created and tested before you start.** Send it a transaction and execute it from the Safe UI first — discovering the signers cannot actually sign, after ownership has moved, is unrecoverable. |

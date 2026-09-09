@@ -243,6 +243,13 @@
    *
    * Naming it also makes the exceptions legible. A panel that deliberately differs now says
    * so by not using this class.
+   *
+   * A bordered rectangle on a slightly raised ground is the entire elevation system. There
+   * is no blur: on /admin and /verify nothing sits behind a card to blur, so backdrop-filter
+   * was paying full paint cost for no visible effect.
+   *
+   * (This rule was declared twice, identically, by two separate polish passes. Two
+   * declarations that agree today are just two places to change tomorrow.)
    */
   .panel {
     border-radius: var(--radius-lg);
@@ -276,17 +283,6 @@
     text-transform: uppercase;
     letter-spacing: var(--tracking-label);
     color: var(--color-fg-muted);
-  }
-
-  /*
-   * A panel is a bordered rectangle on a slightly raised ground. That is the entire
-   * elevation system. There is no blur here: on /admin and /verify there is nothing behind
-   * a card to blur, so backdrop-filter there was paying full paint cost for no effect.
-   */
-  .panel {
-    background: var(--color-surface);
-    border: 1px solid var(--color-line);
-    border-radius: var(--radius-lg);
   }
 
   /* The caret is the one piece of ambient motion left, and it is 2px wide. */

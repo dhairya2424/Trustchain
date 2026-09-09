@@ -320,7 +320,13 @@ export class NetworkSelector {
           return fail({ contracts });
         }
       }
-      checks.push({ name: "contracts", ok: true, detail: "all five contracts have bytecode" });
+      // Counted from the list rather than written out: this said "five" for as long as
+      // there were five, and kept saying it after TrustChainForwarder made six.
+      checks.push({
+        name: "contracts",
+        ok: true,
+        detail: `all ${CONTRACT_NAMES.length} contracts have bytecode`,
+      });
     } catch (error) {
       checks.push({
         name: "contracts",

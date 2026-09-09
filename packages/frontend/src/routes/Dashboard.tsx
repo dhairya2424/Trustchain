@@ -13,6 +13,7 @@ import { AssetGrid } from "@/dashboard/AssetGrid";
 import { CredentialBadges } from "@/dashboard/CredentialBadges";
 import { IdentityCard } from "@/dashboard/IdentityCard";
 import { StatCounter } from "@/dashboard/StatCounter";
+import { SystemPanel } from "@/dashboard/SystemPanel";
 import { useMotion } from "@/motion/MotionProvider";
 import { ConnectButton } from "@/wallet/ConnectButton";
 
@@ -88,24 +89,42 @@ export function Dashboard() {
         </div>
       </fm.header>
 
-      {/* Stats. Counts are of what the trail actually returned, never estimated. */}
+      {/*
+       * Stats. Counts are of what the trail actually returned, never estimated.
+       *
+       * The stagger is mount-based rather than scroll-based on purpose: these sit above the
+       * fold, so a scroll trigger would either fire instantly anyway or — if an observer
+       * never fired — leave the figures invisible. A dashboard that hides its numbers is
+       * worse than one that shows them without ceremony.
+       */}
       <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-4">
-        <StatCounter
-          value={mints.length}
-          label="Assets minted"
-          unavailable={auditError ? "Requires the audit trail" : undefined}
-        />
-        <StatCounter
-          value={issued.length}
-          label="Credentials issued"
-          unavailable={auditError ? "Requires the audit trail" : undefined}
-        />
-        <StatCounter
-          value={revoked.length}
-          label="Revocations"
-          unavailable={auditError ? "Requires the audit trail" : undefined}
-        />
-        <StatCounter value={me.roles.length} label="Roles held" />
+        {[
+          {
+            value: mints.length,
+            label: "Assets minted",
+            unavailable: auditError ? "Requires the audit trail" : undefined,
+          },
+          {
+            value: issued.length,
+            label: "Credentials issued",
+            unavailable: auditError ? "Requires the audit trail" : undefined,
+          },
+          {
+            value: revoked.length,
+            label: "Revocations",
+            unavailable: auditError ? "Requires the audit trail" : undefined,
+          },
+          { value: me.roles.length, label: "Roles held", unavailable: undefined },
+        ].map((stat, index) => (
+          <fm.div
+            key={stat.label}
+            initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motion.transition("base", motion.stagger(index))}
+          >
+            <StatCounter value={stat.value} label={stat.label} unavailable={stat.unavailable} />
+          </fm.div>
+        ))}
       </div>
 
       <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -145,8 +164,28 @@ export function Dashboard() {
           )}
         </div>
 
-        <div className="mt-4 overflow-hidden panel">
+        <div className="mt-4 overflow-hidden panel transition-colors hover:border-line-strong">
           <ActivityFeed entries={entries} isLoading={activity.isLoading} error={auditError} />
+        </div>
+      </section>
+
+      {/*
+       * Last, deliberately.
+       *
+       * The reader's own records come first; the explanation of why those records can be
+       * trusted follows. Putting it above would make the page lecture before it reports,
+       * and someone checking their own credentials does not need the architecture first.
+       */}
+      <section aria-labelledby="system-title" className="mt-12 border-t border-line pt-10">
+        <h2 id="system-title" className="section-label">
+          How this works
+        </h2>
+        <p className="mt-3 max-w-reading text-sm leading-relaxed text-fg-muted">
+          Everything above is read from a chain rather than from a table this platform can edit.
+          That distinction is the product, so here is what enforces it.
+        </p>
+        <div className="mt-6">
+          <SystemPanel />
         </div>
       </section>
     </section>
@@ -207,6 +246,16 @@ function DashboardSkeleton() {
       <div className="mt-12">
         <Skeleton className="h-3 w-20" />
         <Skeleton className="mt-4 h-64 w-full rounded-lg" />
+      </div>
+
+      {/* "How this works". Static content, but it still occupies height when it arrives. */}
+      <div className="mt-12 border-t border-line pt-10">
+        <Skeleton className="h-3 w-28" />
+        <Skeleton className="mt-3 h-4 w-full max-w-reading" />
+        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+          <Skeleton className="h-72 w-full rounded-lg" />
+          <Skeleton className="h-72 w-full rounded-lg" />
+        </div>
       </div>
     </section>
   );

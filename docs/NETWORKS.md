@@ -1,5 +1,9 @@
 # Networks: Amoy primary, Hardhat fallback
 
+> This document explains **how selection works**. For the step-by-step "what do I run, and
+> what does each person see once we are on Amoy", start with
+> [POLYGON_AMOY.md](./POLYGON_AMOY.md).
+
 Polygon Amoy is the main blockchain environment. Local Hardhat is a fallback that keeps the
 platform fully functional when Amoy cannot carry a transaction — it is never presented as
 an equal alternative, and never labelled as Amoy.
