@@ -84,17 +84,20 @@ describe("App shell", () => {
   });
 });
 
-describe("Placeholder routes", () => {
-  it("does not gate the public verify route", () => {
-    // Verification is public by design — no wallet, no account, no sign-in.
+/*
+ * The "Planned contents" scaffolds are gone: every route now reads real data or says why it
+ * cannot. The rule they existed to enforce — never render an invented record — is asserted
+ * where the real data now lives, in Dashboard.test.tsx, admin/admin.test.tsx and
+ * routes/Verify.test.tsx.
+ */
+describe("Public routes", () => {
+  it("does not gate the verify route behind a wallet", () => {
+    // Verification is public by design — no wallet, no account, no sign-in. A credential
+    // only its issuer can check is not verifiable in any useful sense.
     renderWithProviders(<App />, { ...options, route: "/verify" });
-    expect(screen.queryByTestId("wallet-gate")).not.toBeInTheDocument();
-  });
 
-  it("states what a scaffold route will contain rather than showing invented data", () => {
-    renderWithProviders(<App />, { ...options, route: "/verify" });
-    expect(screen.getByRole("heading", { name: "Planned contents" })).toBeInTheDocument();
-    expect(screen.getByText(/never a placeholder standing in for a record/)).toBeInTheDocument();
+    expect(screen.queryByTestId("wallet-gate")).not.toBeInTheDocument();
+    expect(screen.getByTestId("verify-input")).toBeInTheDocument();
   });
 });
 

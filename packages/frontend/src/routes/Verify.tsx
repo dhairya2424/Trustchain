@@ -1,0 +1,360 @@
+import { motion as fm } from "framer-motion";
+import { Check, Link2, QrCode } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+
+import { NetworkBadge } from "@/components/NetworkBadge";
+import { Button } from "@/components/ui/button";
+import { Status } from "@/components/ui/status";
+import { env } from "@/config/env";
+import { useMotion } from "@/motion/MotionProvider";
+import { cn } from "@/lib/utils";
+import { ProvenanceTimeline } from "@/verify/ProvenanceTimeline";
+import { QrScanner, isQrSupported } from "@/verify/QrScanner";
+import { ScanBeam } from "@/verify/ScanBeam";
+import { VerdictBanner } from "@/verify/VerdictBanner";
+import { buildTimeline, classifyInput, decideVerdict, type VerifyResponse } from "@/verify/verdict";
+
+/**
+ * The public verifier.
+ *
+ * No wallet, no account, no session — that is a requirement rather than an oversight. A
+ * credential whose validity can only be checked by someone with an account on the issuing
+ * platform is not verifiable in any useful sense; the whole claim is that a stranger can
+ * check it.
+ *
+ * A `?hash=` or `?jwt=` in the URL verifies immediately on load, which is what makes the
+ * share link a one-click proof: the recipient opens it and sees the verdict, having done
+ * nothing. That link is also genuinely public and read-only — it carries a credential hash
+ * to an unauthenticated endpoint that only reads, so sharing it grants no ability to change
+ * anything.
+ *
+ * One thing this page deliberately does not do is claim more than it checked. Verifying by
+ * hash proves the chain holds a live record; it does not prove the document in your hand is
+ * the one that record refers to. The verdict says which of the two happened.
+ */
+
+type Phase = "idle" | "verifying" | "done" | "error";
+
+const SHELL = "mx-auto w-full max-w-[900px] px-4 sm:px-6";
+
+export function Verify() {
+  const motion = useMotion();
+  const [params, setParams] = useSearchParams();
+
+  const [input, setInput] = useState("");
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [response, setResponse] = useState<VerifyResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Guards the auto-verify so a re-render cannot fire a second request for the same link.
+  const autoRan = useRef(false);
+
+  const verify = useCallback(async (raw: string) => {
+    const classified = classifyInput(raw);
+
+    if (classified.kind === "empty") return;
+
+    if (classified.kind === "unknown") {
+      setPhase("error");
+      setError("That is neither a credential hash (0x… 64 hex characters) nor a credential JWT.");
+      return;
+    }
+
+    setPhase("verifying");
+    setError(null);
+    setResponse(null);
+
+    const body = classified.kind === "hash" ? { credentialHash: raw.trim() } : { jwt: raw.trim() };
+
+    try {
+      const res = await fetch(`${env.VITE_PUBLIC_API_URL}/credentials/verify`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 429) {
+        const retry = (await res.json().catch(() => ({}))) as { retryAfterSeconds?: number };
+        setPhase("error");
+        setError(
+          `Too many checks from this address. Try again in ${retry.retryAfterSeconds ?? 60} seconds.`,
+        );
+        return;
+      }
+
+      if (res.status === 503) {
+        // Never reported as "invalid". An unreachable registry means unknown, and unknown
+        // must not be shown as a verdict about the credential.
+        setPhase("error");
+        setError(
+          "The credential registry is unreachable, so this cannot be checked right now. That is not a statement about the credential.",
+        );
+        return;
+      }
+
+      if (!res.ok) {
+        const parsed = (await res.json().catch(() => ({}))) as { error?: string };
+        setPhase("error");
+        setError(parsed.error ? parsed.error.replace(/_/g, " ") : `Request failed (${res.status})`);
+        return;
+      }
+
+      setResponse((await res.json()) as VerifyResponse);
+      setPhase("done");
+    } catch {
+      setPhase("error");
+      setError("Cannot reach the API.");
+    }
+  }, []);
+
+  // One-click from a shared link.
+  useEffect(() => {
+    if (autoRan.current) return;
+
+    const fromLink = params.get("hash") ?? params.get("jwt");
+    if (!fromLink) return;
+
+    autoRan.current = true;
+    setInput(fromLink);
+    void verify(fromLink);
+  }, [params, verify]);
+
+  const verdict = useMemo(() => (response ? decideVerdict(response) : null), [response]);
+  const timeline = useMemo(() => (response ? buildTimeline(response) : []), [response]);
+
+  const shareUrl = response
+    ? `${globalThis.location?.origin ?? ""}/verify?hash=${response.credentialHash}`
+    : null;
+
+  const share = async () => {
+    if (!shareUrl) return;
+
+    // Keeps the address bar in step with what is on screen, so a reload or a bookmark
+    // reproduces this exact verification.
+    setParams({ hash: response!.credentialHash }, { replace: true });
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Clipboard can be refused; the URL is in the address bar either way.
+      setCopied(false);
+    }
+  };
+
+  return (
+    <section className={`${SHELL} py-12`} aria-labelledby="verify-title">
+      <header className="border-b border-line pb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-fg-faint">
+              Public verifier
+            </p>
+            <h1 id="verify-title" className="mt-2 text-title">
+              Verify a credential
+            </h1>
+          </div>
+          <NetworkBadge variant="full" />
+        </div>
+
+        <p className="mt-4 max-w-[68ch] text-[14px] leading-relaxed text-fg-muted">
+          No account, no wallet, no sign-in. A credential that only its issuer can check is not
+          verifiable in any useful sense — so this page is open to anyone, and the result comes from
+          the chain rather than from us.
+        </p>
+      </header>
+
+      <form
+        className="mt-8"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void verify(input);
+        }}
+      >
+        <label className="block">
+          <span className="mb-2 block text-[11px] uppercase tracking-[0.08em] text-fg-faint">
+            Credential hash or JWT
+          </span>
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            rows={3}
+            spellCheck={false}
+            placeholder="0x… or eyJhbGciOi…"
+            className="w-full resize-y rounded border border-line bg-base px-3 py-2.5 font-mono text-[13px] leading-relaxed"
+            data-testid="verify-input"
+          />
+        </label>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <Button
+            type="submit"
+            disabled={!input.trim() || phase === "verifying"}
+            data-testid="verify-submit"
+          >
+            {phase === "verifying" ? "Verifying…" : "Verify"}
+          </Button>
+
+          {isQrSupported() && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setScanning((current) => !current)}
+              data-testid="verify-scan"
+            >
+              <QrCode className="size-4" aria-hidden="true" />
+              {scanning ? "Stop scanning" : "Scan QR"}
+            </Button>
+          )}
+
+          <span className="text-[12px] text-fg-faint">
+            Pasting the full credential checks its signature too; a hash alone checks only the
+            chain.
+          </span>
+        </div>
+      </form>
+
+      {scanning && (
+        <div className="mt-4">
+          <QrScanner
+            onResult={(value) => {
+              setScanning(false);
+              setInput(value);
+              void verify(value);
+            }}
+            onClose={() => setScanning(false)}
+          />
+        </div>
+      )}
+
+      {phase === "error" && error && (
+        <div
+          className="mt-6 rounded-lg border border-line bg-surface px-5 py-6"
+          data-testid="verify-error"
+          role="status"
+        >
+          <Status tone="fallback">Could not check</Status>
+          <p className="mt-3 max-w-[62ch] text-[13.5px] leading-relaxed text-fg-muted">{error}</p>
+        </div>
+      )}
+
+      {phase === "verifying" && (
+        <div
+          className="relative mt-8 rounded-lg border border-line bg-surface px-6 py-14 text-center"
+          data-testid="verify-scanning"
+        >
+          <ScanBeam active />
+          <p className="relative text-[14px] text-fg-muted">
+            Checking the signature and the chain…
+          </p>
+        </div>
+      )}
+
+      {phase === "done" && verdict && response && (
+        <fm.div
+          className="mt-8 space-y-6"
+          initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={motion.transition("base")}
+        >
+          <VerdictBanner verdict={verdict} />
+
+          <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]">
+            <div className="rounded-lg border border-line bg-surface p-6">
+              <h3 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted">
+                Provenance
+              </h3>
+              <div className="mt-5">
+                <ProvenanceTimeline nodes={timeline} />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-line bg-surface p-6">
+              <h3 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted">
+                Proof
+              </h3>
+
+              <dl className="mt-5 space-y-3.5 text-[12.5px]">
+                <Fact term="Credential hash" mono>
+                  {response.credentialHash}
+                </Fact>
+                <Fact term="On-chain status" mono>
+                  {response.status}
+                </Fact>
+                <Fact term="Signature">
+                  {response.proof.signatureChecked
+                    ? response.proof.signatureValid
+                      ? "verified against the issuer's key"
+                      : "did not verify"
+                    : "not checked — only a hash was supplied"}
+                </Fact>
+                {response.proof.issuer && (
+                  <Fact term="Issuer" mono>
+                    {response.proof.issuer}
+                  </Fact>
+                )}
+                {response.proof.subject && (
+                  <Fact term="Subject" mono>
+                    {response.proof.subject}
+                  </Fact>
+                )}
+                {response.proof.type?.length ? (
+                  <Fact term="Type">{response.proof.type.join(", ")}</Fact>
+                ) : null}
+              </dl>
+
+              <div className="mt-6 border-t border-line pt-5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void share()}
+                  className="w-full"
+                  data-testid="verify-share"
+                >
+                  {copied ? (
+                    <Check className="size-3.5" aria-hidden="true" />
+                  ) : (
+                    <Link2 className="size-3.5" aria-hidden="true" />
+                  )}
+                  {copied ? "Link copied" : "Share verification"}
+                </Button>
+                <p className="mt-2 text-[11.5px] leading-snug text-fg-faint">
+                  A public, read-only link. Opening it re-runs this check against the chain — it
+                  carries the result of nothing, only the question.
+                </p>
+              </div>
+            </div>
+          </div>
+        </fm.div>
+      )}
+    </section>
+  );
+}
+
+function Fact({
+  term,
+  children,
+  mono,
+}: {
+  term: string;
+  children: React.ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">{term}</dt>
+      <dd
+        className={cn(
+          "mt-1 text-fg-muted [overflow-wrap:anywhere]",
+          mono && "font-mono text-[12px]",
+        )}
+      >
+        {children}
+      </dd>
+    </div>
+  );
+}

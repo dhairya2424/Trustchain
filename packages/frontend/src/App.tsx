@@ -7,7 +7,7 @@ import { AdminLayout } from "./admin/AdminLayout";
 import { AuditLog } from "./admin/AuditLog";
 import { MintWizard } from "./admin/MintWizard";
 import { RoleManager } from "./admin/RoleManager";
-import { Verify } from "./routes/routes";
+import { Verify } from "./routes/Verify";
 import { ConnectButton } from "./wallet/ConnectButton";
 import { cn } from "@/lib/utils";
 

@@ -71,7 +71,19 @@ export function NetworkBadge({ variant = "compact", className }: NetworkBadgePro
           return;
         }
 
-        const body = (await response.json()) as { active: NetworkInfo };
+        const body = (await response.json()) as { active?: NetworkInfo };
+
+        // Defensive on purpose. This component must never misreport which chain is active,
+        // so a response missing `active` is treated as "cannot tell" rather than rendered —
+        // an undefined network here would throw on `network.label` and take the whole page
+        // down with it.
+        if (!body?.active?.label) {
+          if (!cancelled) {
+            setState({ status: "unavailable", detail: "Network status unavailable" });
+          }
+          return;
+        }
+
         if (!cancelled) setState({ status: "ready", network: body.active });
       } catch {
         if (!cancelled) {
