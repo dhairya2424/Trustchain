@@ -7,6 +7,8 @@ import type { CredentialReader, CredentialSnapshot } from "../credentials/regist
 import { OnChainCredentialReader } from "../credentials/registry";
 import type { AuditFilter, AuditQueryResult, RawAuditEvent } from "../audit/events";
 import { FallbackAuditSource, OnChainAuditSource, SubgraphAuditSource } from "../audit/events";
+import { IndexedAuditSource } from "../indexer/source";
+import type { EventIndexStore } from "../indexer/store";
 import type { Logger } from "../http/logger";
 import type { NetworkSelector } from "./networkSelector";
 
@@ -105,6 +107,8 @@ export class SelectedAuditSource {
       /** Subgraph endpoint per network id. Absent means "chain only" for that network." */
       subgraphUrls: Partial<Record<string, string>>;
       deploymentBlocks: Partial<Record<string, bigint>>;
+      /** Absent means no indexer is running; reads then go straight to the chain. */
+      indexStore?: EventIndexStore | undefined;
     },
   ) {}
 
@@ -116,6 +120,22 @@ export class SelectedAuditSource {
       address: active.contracts.AuditTrail as Address,
       deploymentBlock: this.options.deploymentBlocks[active.network.id] ?? 0n,
     });
+
+    /*
+     * The index first, when it has anything to say.
+     *
+     * `hasData` rather than "did the query return rows": an empty index and a genuinely
+     * empty trail look identical in a result set, and reporting "nothing happened" because
+     * the indexer has not started yet would be a false statement about the ledger. So an
+     * index with no entries at all defers to the chain, and only an index that has
+     * demonstrably read something is trusted to answer.
+     */
+    if (this.options.indexStore) {
+      const indexed = new IndexedAuditSource(this.options.indexStore, active.network.id);
+      if (await indexed.hasData()) {
+        return { events: await indexed.query(filter), source: "index" };
+      }
+    }
 
     const subgraphUrl = this.options.subgraphUrls[active.network.id];
     if (!subgraphUrl) {

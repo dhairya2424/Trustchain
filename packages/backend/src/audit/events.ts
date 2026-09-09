@@ -205,7 +205,7 @@ function toRawEvent(row: SubgraphRow): RawAuditEvent {
 // getLogs — the authoritative fallback
 // ---------------------------------------------------------------------------
 
-const ACTION_LOGGED = parseAbiItem(
+export const ACTION_LOGGED = parseAbiItem(
   "event ActionLogged(uint256 indexed entryId, bytes32 indexed didHash, uint8 indexed actionCode, address actor, bytes32 refHash, address caller, uint64 timestamp)",
 );
 
@@ -246,7 +246,7 @@ export interface OnChainAuditOptions {
  * alternative — treating a range refusal as a dead RPC — turns a recoverable condition into
  * an outage.
  */
-function isRangeTooWide(error: unknown): boolean {
+export function isRangeTooWide(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return (
     /block range/i.test(message) ||
@@ -256,7 +256,7 @@ function isRangeTooWide(error: unknown): boolean {
 }
 
 /** Alchemy names the range that would have worked. Believe it rather than guessing. */
-function suggestedWindow(error: unknown): bigint | undefined {
+export function suggestedWindow(error: unknown): bigint | undefined {
   const message = error instanceof Error ? error.message : String(error);
   const match = message.match(/should work:\s*\[(0x[0-9a-f]+),\s*(0x[0-9a-f]+)\]/i);
   if (!match) return undefined;
@@ -321,7 +321,7 @@ export class OnChainAuditSource implements AuditEventSource {
   }
 
   async query(filter: AuditFilter): Promise<RawAuditEvent[]> {
-    const { client, address, deploymentBlock } = this.options;
+    const { client, deploymentBlock } = this.options;
 
     let head: bigint;
     try {
@@ -417,8 +417,15 @@ export class OnChainAuditSource implements AuditEventSource {
 
 export interface AuditQueryResult {
   events: RawAuditEvent[];
-  /** Which source answered. Surfaced to the caller so a degraded read is visible. */
-  source: "subgraph" | "chain";
+  /**
+   * Which source answered. Surfaced to the caller so a degraded read is visible.
+   *
+   * "index" is the fast path served from the local event index; "chain" means the index
+   * could not answer and the trail was read straight from the chain — correct, but slow
+   * and, on a rate-limited provider, incomplete. A reader that cares about completeness
+   * can tell the difference.
+   */
+  source: "index" | "subgraph" | "chain";
 }
 
 /**

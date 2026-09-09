@@ -4,6 +4,8 @@ import { createPublicClient, http, type Address, type PublicClient } from "viem"
 
 import { EnvValidationError, loadEnv, rpcUrlFor, type Env } from "./config/env";
 import { createServer } from "./server";
+import { RedisEventIndex, type EventIndexStore } from "./indexer/store";
+import { IndexerSupervisor, readDeploymentBlocks } from "./indexer/supervisor";
 import { createPino, httpLogger, PinoLogger } from "./http/pinoLogger";
 import { FailureTracker } from "./auth/failureTracker";
 import { NonceService } from "./auth/nonce";
@@ -126,10 +128,12 @@ function buildAudit(
   selector: NetworkSelector,
   logger: Logger,
   resolveCaller: CallerResolver,
+  indexStore: EventIndexStore | undefined,
 ): AuditDependencies {
   return {
     events: new SelectedAuditSource(selector, {
       logger,
+      ...(indexStore ? { indexStore } : {}),
       // Only Amoy has a subgraph; the local chain is read directly. Keyed by network so a
       // switch cannot point the indexer of one chain at the addresses of another.
       subgraphUrls: { amoy: env.SUBGRAPH_URL },
@@ -299,6 +303,34 @@ function main(): void {
   const credentials = buildCredentials(env, platform, logger, resolveCaller, selector, pinner);
   const assets = buildAssets(env, platform, logger, resolveCaller, selector, pinner);
 
+  /*
+   * The event indexer.
+   *
+   * Without it, the audit trail is read by scanning the chain on every request — which is
+   * fine against a local node and impossible against a rate-limited provider. With it, the
+   * chain is walked once and every reader is served from the result, which is also what
+   * makes near-real-time updates possible: the indexer knows the moment a new confirmed
+   * event appears, so the UI can be told rather than having to ask.
+   *
+   * It runs only when a network can be selected. There is nothing to index otherwise, and
+   * an indexer looping against an unusable chain would produce noise rather than data.
+   */
+  let indexStore: EventIndexStore | undefined;
+  let supervisor: IndexerSupervisor | undefined;
+
+  if (selector) {
+    indexStore = new RedisEventIndex(redis);
+    supervisor = new IndexerSupervisor({
+      selector,
+      store: indexStore,
+      logger,
+      // Per network, from the deployment records. A single configured block cannot describe
+      // two chains, and using the local one on Amoy would scan from block 18 to the head.
+      deploymentBlocks: readDeploymentBlocks(env.DEPLOYMENTS_DIR),
+    });
+    supervisor.start();
+  }
+
   if (!selector) {
     logger.log({
       level: "warn",
@@ -312,7 +344,7 @@ function main(): void {
     auth,
     logger,
     allowedOrigins: parseAllowedOrigins(env.CORS_ORIGIN),
-    ...(selector ? { audit: buildAudit(env, selector, logger, resolveCaller) } : {}),
+    ...(selector ? { audit: buildAudit(env, selector, logger, resolveCaller, indexStore) } : {}),
     ...(credentials ? { credentials } : {}),
     ...(selector
       ? {
@@ -341,6 +373,9 @@ function main(): void {
   });
 
   const shutdown = () => {
+    // Stop indexing before the Redis client goes away: a pass that is mid-write when the
+    // connection closes logs an error that looks like data loss and is not.
+    supervisor?.stop();
     server.close(() => {
       void redis.quit();
     });

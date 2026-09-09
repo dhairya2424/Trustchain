@@ -371,14 +371,39 @@ async function main() {
   section("8. An auditor can see who did it, and who paid");
 
   const adminSession = await signIn(admin);
-  const audit = await call("GET", "/audit?limit=25", { jar: adminSession.jar });
-  const entries = audit.body?.entries ?? [];
-  const mine = entries.find(
-    (entry) => entry.actor?.toLowerCase() === newUser.address.toLowerCase(),
+
+  /*
+   * Wait for the indexer, and time the wait.
+   *
+   * The index lags the head deliberately: nothing is recorded as final until it is buried
+   * under the confirmation depth, because an entry that is later reorganised out would be
+   * worse than one that arrives a few seconds late. So the question is not "is it there
+   * instantly" — it is "does it arrive without anyone asking", which is what near-real-time
+   * means here, and what this measures rather than assumes.
+   */
+  const waitStarted = Date.now();
+  let entries = [];
+  let mine;
+  let source = null;
+
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const audit = await call("GET", "/audit?limit=25", { jar: adminSession.jar });
+    entries = audit.body?.entries ?? [];
+    source = audit.body?.source ?? null;
+    mine = entries.find((entry) => entry.actor?.toLowerCase() === newUser.address.toLowerCase());
+    if (mine) break;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+
+  const waited = ((Date.now() - waitStarted) / 1000).toFixed(1);
+  check(
+    "the trail was served from the index, not a chain scan",
+    source === "index",
+    String(source),
   );
 
   check(
-    "the audit trail carries the new wallet's action",
+    `the indexer picked the action up on its own (${waited}s)`,
     Boolean(mine),
     `${entries.length} entries scanned`,
   );

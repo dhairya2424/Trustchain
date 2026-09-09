@@ -59,5 +59,5 @@ export interface AuditPageDto {
    * a UI can say so. Concealing a degraded read is how a stale answer gets treated as
    * authoritative.
    */
-  source: "subgraph" | "chain";
+  source: "index" | "subgraph" | "chain";
 }
