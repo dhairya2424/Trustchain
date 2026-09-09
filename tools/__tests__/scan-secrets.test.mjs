@@ -101,5 +101,21 @@ describe("secret scanner", () => {
       });
       expect(findings.map((f) => f.patternId)).toContain("evm-private-key");
     });
+
+    it("ignores a hash cited as an explorer transaction link", () => {
+      // Documentation cites a transaction the way a reader can check it. The hex after
+      // `/tx/` is a mined transaction by definition — already public.
+      const findings = scanContent(`  https://amoy.polygonscan.com/tx/${EVM_KEY}`, {
+        filePath: "docs/TRACEABILITY.md",
+      });
+      expect(findings).toHaveLength(0);
+    });
+
+    it("still flags a bare key on a line that merely mentions an explorer", () => {
+      const findings = scanContent(`const pk = "${EVM_KEY}"; // amoy.polygonscan.com/tx/0x1`, {
+        filePath: "src/a.ts",
+      });
+      expect(findings.map((f) => f.patternId)).toContain("evm-private-key");
+    });
   });
 });

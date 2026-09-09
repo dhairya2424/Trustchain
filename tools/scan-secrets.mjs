@@ -135,6 +135,22 @@ function isPublicChainHash(line, value) {
   return new RegExp(`${PUBLIC_HASH_KEYS.source}\\s*:\\s*"${escaped}"`, "i").test(line);
 }
 
+/**
+ * The same hash, written as a link instead of a field.
+ *
+ * Documentation cites transactions the way a reader can actually check them — as an explorer
+ * URL — and `https://amoy.polygonscan.com/tx/0x…` is the canonical form. The hex there is a
+ * mined transaction by definition: it is already public, and a private key pasted into that
+ * position would not be a secret leak so much as a broken link.
+ *
+ * As narrow as the field rule above: the hex must directly follow an explorer's `/tx/`
+ * segment. A bare hash anywhere else in the same sentence still fails the scan.
+ */
+function isExplorerTxUrl(line, value) {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`/tx/${escaped}\\b`, "i").test(line);
+}
+
 /** Scan a string. Returns [{ patternId, description, line, redacted }]. */
 export function scanContent(content, { filePath = "<memory>" } = {}) {
   if (isAllowlisted(filePath)) return [];
@@ -150,7 +166,12 @@ export function scanContent(content, { filePath = "<memory>" } = {}) {
       for (const match of line.matchAll(pattern.regex)) {
         const value = match[0];
         if (PLACEHOLDER.test(value)) continue;
-        if (pattern.id === "evm-private-key" && isPublicChainHash(line, value)) continue;
+        if (
+          pattern.id === "evm-private-key" &&
+          (isPublicChainHash(line, value) || isExplorerTxUrl(line, value))
+        ) {
+          continue;
+        }
 
         findings.push({
           filePath,
