@@ -79,6 +79,30 @@ export function useSession() {
   });
 }
 
+/**
+ * The session as the cache already holds it — observed, never fetched.
+ *
+ * ConnectButton needs to know whether there is a session, and it is rendered *by* the
+ * sign-in prompt that the session state decides to show. Subscribing with `useSession`
+ * there adds an observer that can trigger a fetch, which returns the page to its loading
+ * branch, which unmounts ConnectButton, which drops the observer — and round again. The
+ * page flickers between a skeleton and a sign-in prompt forever.
+ *
+ * `enabled: false` breaks the cycle at its source: this reads whatever is in the cache and
+ * re-renders when it changes, but it never starts a request. Something else always owns the
+ * fetching — the page that gates on the session, and the sign-in and sign-out mutations,
+ * which write the result into this key directly.
+ */
+export function useSessionSnapshot() {
+  return useQuery<Session, ApiError>({
+    queryKey: queryKeys.session,
+    queryFn: ({ signal }) => apiGet<Session>("/auth/session", signal),
+    enabled: false,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
 export interface NetworkResponse {
   active: NetworkInfo;
 }

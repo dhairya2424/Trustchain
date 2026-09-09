@@ -8,6 +8,7 @@ import { ParticleNetwork } from "../hero/ParticleNetwork";
 import { Typewriter } from "../hero/Typewriter";
 import { useMotion } from "@/motion/MotionProvider";
 import { useScrollReveal } from "../scroll/useScrollReveal";
+import { SecuritySection } from "@/system/SecuritySection";
 import { ConnectButton } from "../wallet/ConnectButton";
 
 /**
@@ -157,6 +158,28 @@ export function Landing() {
             </li>
           ))}
         </ol>
+      </section>
+
+      {/*
+        The case for trusting any of it, on the page where it has to be made.
+        
+        This lived on the dashboard, which was the wrong audience: somebody signed in and
+        looking at their own credentials has already accepted the premise. The visitor who
+        has accepted nothing is here.
+      */}
+      <section className={`${SHELL} relative py-20`} aria-labelledby="security-title">
+        <div className="mb-10 border-b border-line pb-6">
+          <h2 id="security-title" className="text-title">
+            What makes it secure
+          </h2>
+          <p className="mt-3 max-w-reading text-base leading-relaxed text-fg-muted">
+            Every claim below is a property of the contracts, not a promise from us. The network
+            badge says which chain is answering, and therefore how much an outsider can check
+            without our help.
+          </p>
+        </div>
+
+        <SecuritySection />
       </section>
     </div>
   );

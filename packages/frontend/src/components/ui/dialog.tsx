@@ -1,5 +1,6 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import { forwardRef } from "react";
 import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/utils";
@@ -27,12 +28,24 @@ export const DialogClose = DialogPrimitive.Close;
 export const DialogTitle = DialogPrimitive.Title;
 export const DialogDescription = DialogPrimitive.Description;
 
-export function DialogOverlay({
-  className,
-  ...props
-}: ComponentProps<typeof DialogPrimitive.Overlay>) {
+/*
+ * forwardRef, because Radix needs the node.
+ *
+ * `Dialog.Portal` renders the overlay through a Slot, which passes a ref down to whatever
+ * it wraps. A plain function component cannot receive one, so React logged "Function
+ * components cannot be given refs" on every open and Radix silently lost its handle on the
+ * scrim — the element it uses for outside-press detection and presence animation.
+ *
+ * The warning was easy to miss because the dialog still looked correct: the overlay renders
+ * either way, and only the behaviours that need the node are affected.
+ */
+export const DialogOverlay = forwardRef<
+  HTMLDivElement,
+  ComponentProps<typeof DialogPrimitive.Overlay>
+>(function DialogOverlay({ className, ...props }, ref) {
   return (
     <DialogPrimitive.Overlay
+      ref={ref}
       className={cn(
         "fixed inset-0 z-50 bg-black/70 backdrop-blur-[2px]",
         "dialog-overlay",
@@ -41,7 +54,7 @@ export function DialogOverlay({
       {...props}
     />
   );
-}
+});
 
 export interface DialogContentProps extends ComponentProps<typeof DialogPrimitive.Content> {
   /** Renders the built-in close control. */

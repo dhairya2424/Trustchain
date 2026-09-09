@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { motion as fm } from "framer-motion";
 import { NavLink, Route, Routes } from "react-router-dom";
 
 import { NetworkBadge } from "./components/NetworkBadge";
@@ -13,6 +14,7 @@ import { ConnectButton } from "./wallet/ConnectButton";
 import { cn } from "@/lib/utils";
 import { PageTransition } from "@/components/PageTransition";
 import { prefetchRoute } from "@/api/prefetch";
+import { useMotion } from "@/motion/MotionProvider";
 
 /**
  * The app shell: a persistent header, the routed view, and a footer.
@@ -30,6 +32,7 @@ const NAV = [
 ] as const;
 
 export default function App() {
+  const motion = useMotion();
   const queryClient = useQueryClient();
 
   /*
@@ -84,15 +87,40 @@ export default function App() {
                 onFocus={warm(item.to)}
                 className={({ isActive }) =>
                   cn(
-                    "rounded px-3 py-1.5 text-sm transition-colors",
+                    "relative rounded px-3 py-1.5 text-sm transition-colors",
                     // Weight as well as colour: "current" must not be carried by hue alone.
                     isActive
-                      ? "bg-hover font-medium text-fg"
+                      ? "font-medium text-fg"
                       : "font-normal text-fg-muted hover:bg-hover/60 hover:text-fg",
                   )
                 }
               >
-                {item.label}
+                {({ isActive }) => (
+                  <>
+                    {/*
+                      One pill, shared across the links.
+                      
+                      `layoutId` makes framer treat the indicator on the old link and the one
+                      on the new link as the same element, so it slides between them instead
+                      of blinking out and in. It is behind the label rather than around it,
+                      so the text never moves — motion that shifts the thing you are reading
+                      is worse than no motion at all.
+                    */}
+                    {isActive && (
+                      <fm.span
+                        layoutId="nav-active"
+                        className="absolute inset-0 -z-10 rounded bg-hover"
+                        aria-hidden="true"
+                        transition={
+                          motion.reduced
+                            ? { duration: 0 }
+                            : { type: "spring", stiffness: 420, damping: 34 }
+                        }
+                      />
+                    )}
+                    {item.label}
+                  </>
+                )}
               </NavLink>
             ))}
           </nav>

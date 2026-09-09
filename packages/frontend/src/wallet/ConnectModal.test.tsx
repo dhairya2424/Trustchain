@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ConnectModal } from "./ConnectModal";
 import { ConnectButton } from "./ConnectButton";
+import { useSession } from "@/api/queries";
 import { renderWithProviders } from "../test/harness";
 
 /**
@@ -195,8 +196,15 @@ describe("ConnectModal — reduced motion", () => {
   });
 });
 
-describe("ConnectButton", () => {
-  it("opens the modal", () => {
+describe("ConnectButton — three states, not two", () => {
+  /**
+   * Connecting a wallet and holding a session are different things, and the button used to
+   * conflate them: it showed the address the moment wagmi connected, while `/auth/session`
+   * was still 401 and every page said "sign in". Someone whose address was already in the
+   * header was told to sign in, with no control anywhere that would do it.
+   */
+
+  it("opens the modal when nothing is connected", () => {
     renderWithProviders(<ConnectButton />, { wagmi: true });
 
     expect(screen.queryByTestId("connect-modal")).not.toBeInTheDocument();
@@ -204,8 +212,65 @@ describe("ConnectButton", () => {
     expect(screen.getByTestId("connect-modal")).toBeInTheDocument();
   });
 
-  it("shows a truncated address once connected", async () => {
+  it("asks for a signature once connected, rather than claiming to be signed in", async () => {
+    // Sign-in cannot succeed here, which is exactly the state being pinned: connected,
+    // not signed in, and saying so rather than showing an identity it does not have.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response('{"error":"unauthenticated"}', { status: 401 })),
+    );
+
     renderWithProviders(<ConnectButton />, { wagmi: true });
+
+    fireEvent.click(screen.getByTestId("connect-button"));
+    fireEvent.click(screen.getByTestId("wallet-option-mock"));
+
+    await waitFor(() => expect(screen.getByTestId("connected-not-signed-in")).toBeInTheDocument(), {
+      timeout: 5000,
+    });
+
+    expect(screen.getByTestId("connected-not-signed-in").textContent).toMatch(/0x[0-9a-fA-F]{4}/);
+    expect(screen.getByTestId("sign-in-button")).toBeInTheDocument();
+    expect(screen.queryByTestId("account-chip")).not.toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the identity chip once a session exists", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/auth/session")) {
+          return Response.json({
+            address: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            did: "did:trustchain:0xabc",
+            roles: ["USER"],
+          });
+        }
+        return new Response('{"error":"unauthenticated"}', { status: 401 });
+      }),
+    );
+
+    /*
+     * A page-shaped probe alongside the button.
+     *
+     * ConnectButton observes the session without fetching it — see `useSessionSnapshot`,
+     * which exists because a button that fetches the state deciding whether to render it
+     * flickers forever. So something else has to do the fetching, exactly as a real page
+     * does, and this stands in for that page.
+     */
+    function SessionProbe() {
+      useSession();
+      return null;
+    }
+
+    renderWithProviders(
+      <>
+        <SessionProbe />
+        <ConnectButton />
+      </>,
+      { wagmi: true },
+    );
 
     fireEvent.click(screen.getByTestId("connect-button"));
     fireEvent.click(screen.getByTestId("wallet-option-mock"));
@@ -214,12 +279,13 @@ describe("ConnectButton", () => {
       timeout: 5000,
     });
 
-    // Truncated for layout, with the full value still available on hover and to a screen
-    // reader through the title.
-    expect(screen.getByTestId("account-chip").textContent).toMatch(/^0x[0-9a-fA-F]{4}…/);
+    // Truncated for layout, with the full value still available through the title.
+    expect(screen.getByTestId("account-chip").textContent).toMatch(/0x[0-9a-fA-F]{4}/);
     expect(screen.getByTestId("account-chip")).toHaveAttribute(
       "title",
-      expect.stringContaining("0x"),
+      expect.stringContaining("signed in"),
     );
+
+    vi.unstubAllGlobals();
   });
 });

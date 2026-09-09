@@ -13,7 +13,6 @@ import { AssetGrid } from "@/dashboard/AssetGrid";
 import { CredentialBadges } from "@/dashboard/CredentialBadges";
 import { IdentityCard } from "@/dashboard/IdentityCard";
 import { StatCounter } from "@/dashboard/StatCounter";
-import { SystemPanel } from "@/dashboard/SystemPanel";
 import { useMotion } from "@/motion/MotionProvider";
 import { ConnectButton } from "@/wallet/ConnectButton";
 
@@ -61,7 +60,21 @@ export function Dashboard() {
     );
   }
 
-  if (session.isLoading || !session.data) return <DashboardSkeleton />;
+  /*
+   * Only the first load shows a skeleton.
+   *
+   * This was `isLoading || !session.data`, and the second half made the page oscillate once
+   * ConnectButton began reading the session too. The sign-in prompt renders ConnectButton;
+   * ConnectButton subscribing to the session query adds an observer, which refetches; during
+   * the refetch there is still no data, so the page fell back to the skeleton, which
+   * unmounted ConnectButton, which removed the observer — and round again.
+   *
+   * `isPending` is true only before the query has ever settled, so a refetch cannot send a
+   * settled page backwards. A settled query with no data means signed out, which is a state
+   * to render, not a state to wait on.
+   */
+  if (session.isPending) return <DashboardSkeleton />;
+  if (!session.data) return <SignInPrompt />;
 
   const me = session.data;
   const auditError = activity.error instanceof ApiError ? activity.error : null;
@@ -127,7 +140,20 @@ export function Dashboard() {
         ))}
       </div>
 
-      <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      {/*
+       * The sections arrive in reading order, a beat apart.
+       *
+       * Mount-based rather than scroll-based, for the same reason the stats above are: a
+       * dashboard's content must never depend on an observer firing to become visible. The
+       * delays continue the stats' stagger so the page assembles as one movement instead of
+       * two unrelated ones.
+       */}
+      <fm.div
+        className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"
+        initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={motion.transition("base", motion.stagger(4))}
+      >
         <IdentityCard session={me} />
 
         <section aria-labelledby="credentials-title" className="min-w-0">
@@ -143,18 +169,30 @@ export function Dashboard() {
             />
           </div>
         </section>
-      </div>
+      </fm.div>
 
-      <section aria-labelledby="assets-title" className="mt-12">
+      <fm.section
+        aria-labelledby="assets-title"
+        className="mt-12"
+        initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={motion.transition("base", motion.stagger(5))}
+      >
         <h2 id="assets-title" className="section-label">
           My assets
         </h2>
         <div className="mt-4">
           <AssetGrid mints={mints} isLoading={activity.isLoading} blocked={blocked} />
         </div>
-      </section>
+      </fm.section>
 
-      <section aria-labelledby="activity-title" className="mt-12">
+      <fm.section
+        aria-labelledby="activity-title"
+        className="mt-12"
+        initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={motion.transition("base", motion.stagger(6))}
+      >
         <div className="flex items-baseline justify-between gap-4">
           <h2 id="activity-title" className="section-label">
             Activity
@@ -167,27 +205,7 @@ export function Dashboard() {
         <div className="mt-4 overflow-hidden panel transition-colors hover:border-line-strong">
           <ActivityFeed entries={entries} isLoading={activity.isLoading} error={auditError} />
         </div>
-      </section>
-
-      {/*
-       * Last, deliberately.
-       *
-       * The reader's own records come first; the explanation of why those records can be
-       * trusted follows. Putting it above would make the page lecture before it reports,
-       * and someone checking their own credentials does not need the architecture first.
-       */}
-      <section aria-labelledby="system-title" className="mt-12 border-t border-line pt-10">
-        <h2 id="system-title" className="section-label">
-          How this works
-        </h2>
-        <p className="mt-3 max-w-reading text-sm leading-relaxed text-fg-muted">
-          Everything above is read from a chain rather than from a table this platform can edit.
-          That distinction is the product, so here is what enforces it.
-        </p>
-        <div className="mt-6">
-          <SystemPanel />
-        </div>
-      </section>
+      </fm.section>
     </section>
   );
 }
@@ -246,16 +264,6 @@ function DashboardSkeleton() {
       <div className="mt-12">
         <Skeleton className="h-3 w-20" />
         <Skeleton className="mt-4 h-64 w-full rounded-lg" />
-      </div>
-
-      {/* "How this works". Static content, but it still occupies height when it arrives. */}
-      <div className="mt-12 border-t border-line pt-10">
-        <Skeleton className="h-3 w-28" />
-        <Skeleton className="mt-3 h-4 w-full max-w-reading" />
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
-          <Skeleton className="h-72 w-full rounded-lg" />
-          <Skeleton className="h-72 w-full rounded-lg" />
-        </div>
       </div>
     </section>
   );
