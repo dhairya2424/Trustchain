@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 import { queryKeys } from "@/api/queries";
 
 /**
@@ -101,7 +101,7 @@ export function LiveChainProvider({ children }: { children: ReactNode }) {
     // Cookies carry the session, and the API is a different origin in development, so the
     // request has to be credentialed. The server's CORS allowlist is exact-match, so this
     // cannot be turned into a wildcard by an attacker-chosen Origin.
-    const source = new EventSource(`${env.VITE_PUBLIC_API_URL}/stream`, {
+    const source = new EventSource(`${apiBaseUrl}/stream`, {
       withCredentials: true,
     });
     sourceRef.current = source;

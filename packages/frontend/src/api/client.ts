@@ -1,4 +1,4 @@
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 
 /**
  * The single place the app talks to the API.
@@ -48,7 +48,7 @@ export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> 
   let response: Response;
 
   try {
-    response = await fetch(`${env.VITE_PUBLIC_API_URL}${path}`, {
+    response = await fetch(`${apiBaseUrl}${path}`, {
       credentials: "include",
       headers: { accept: "application/json" },
       ...(signal ? { signal } : {}),

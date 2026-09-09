@@ -11,7 +11,7 @@ import { useSession, type Session } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn, truncateAddress } from "@/lib/utils";
 
@@ -159,7 +159,7 @@ function SubjectPanel({
   const change = useMutation({
     mutationFn: async ({ role, grant }: { role: RoleId; grant: boolean }) => {
       const prepared = await fetch(
-        `${env.VITE_PUBLIC_API_URL}/roles/${grant ? "prepare-grant" : "prepare-revoke"}`,
+        `${apiBaseUrl}/roles/${grant ? "prepare-grant" : "prepare-revoke"}`,
         {
           method: "POST",
           credentials: "include",

@@ -6,7 +6,7 @@ import { useRef, useState, type DragEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 import { TransactionTrail } from "@/chain/TransactionTrail";
 import { useNetwork } from "@/api/queries";
 import { useMotion } from "@/motion/MotionProvider";
@@ -96,7 +96,7 @@ export function MintWizard() {
     // XHR rather than fetch: only XHR reports upload progress, and this is the one request
     // in the app where the user genuinely needs to see it move.
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${env.VITE_PUBLIC_API_URL}/assets/mint`);
+    xhr.open("POST", `${apiBaseUrl}/assets/mint`);
     xhr.withCredentials = true;
 
     xhr.upload.onprogress = (event) => {

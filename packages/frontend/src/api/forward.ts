@@ -1,4 +1,4 @@
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 import { humanErrorText } from "./errors";
 
 /**
@@ -72,7 +72,7 @@ export async function forwardSigned(
   typedData: PreparedTypedData,
   signature: string,
 ): Promise<ForwardResult> {
-  const response = await fetch(`${env.VITE_PUBLIC_API_URL}/network/forward`, {
+  const response = await fetch(`${apiBaseUrl}/network/forward`, {
     method: "POST",
     credentials: "include",
     headers: { "content-type": "application/json" },

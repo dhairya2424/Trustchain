@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { NetworkBadge } from "@/components/NetworkBadge";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 import { apiGet } from "@/api/client";
 import { humanError, humanErrorText } from "@/api/errors";
 import { useMotion } from "@/motion/MotionProvider";
@@ -103,7 +103,7 @@ export function Verify() {
     const body = classified.kind === "hash" ? { credentialHash: raw.trim() } : { jwt: raw.trim() };
 
     try {
-      const res = await fetch(`${env.VITE_PUBLIC_API_URL}/credentials/verify`, {
+      const res = await fetch(`${apiBaseUrl}/credentials/verify`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),

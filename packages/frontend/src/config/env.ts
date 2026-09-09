@@ -63,3 +63,55 @@ export function parsePublicEnv(raw: Record<string, unknown>): PublicEnv {
 }
 
 export const env: PublicEnv = parsePublicEnv(import.meta.env as unknown as Record<string, unknown>);
+
+/** localhost, a loopback address, or a bare IPv4 — the shapes a development host takes. */
+function isDevelopmentHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "[::1]" ||
+    /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
+/**
+ * The API base, with its host following the page's.
+ *
+ * The session is an httpOnly cookie with `SameSite=Strict`, so the browser sends it only on
+ * same-site requests — and `localhost` and `192.168.x.x` are different sites. Pinning the
+ * API to one host therefore breaks the other: configured as the LAN address, a page opened
+ * at localhost signs in successfully and then makes every subsequent request anonymously,
+ * which surfaces as a dashboard of "unauthenticated" panels above a header that shows you
+ * signed in. Configured as localhost, the same thing happens on a phone.
+ *
+ * So in development the hostname is taken from the page and only the scheme, port and path
+ * come from configuration. Both ends then always agree, whichever address was opened.
+ *
+ * Production is left exactly as configured: a real domain is authoritative, the app and API
+ * are required to share a registrable domain there anyway (docs/HTTPS.md), and rewriting a
+ * deployed host from whatever the browser happened to load would be a far worse bug than
+ * the one this fixes.
+ */
+export function resolveApiBaseUrl(
+  configured: string = env.VITE_PUBLIC_API_URL,
+  location: { hostname: string } | undefined = globalThis.location,
+): string {
+  if (!location?.hostname) return configured;
+
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    return configured;
+  }
+
+  if (url.hostname === location.hostname) return configured;
+  if (!isDevelopmentHost(url.hostname) || !isDevelopmentHost(location.hostname)) return configured;
+
+  url.hostname = location.hostname;
+  // `origin` drops any path, which the configured value is not expected to carry.
+  return url.origin;
+}
+
+/** Resolved once: the page's host does not change for the life of the document. */
+export const apiBaseUrl = resolveApiBaseUrl();

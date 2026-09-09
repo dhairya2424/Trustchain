@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useSignMessage } from "wagmi";
 import { createSiweMessage } from "viem/siwe";
 
-import { env } from "@/config/env";
+import { apiBaseUrl } from "@/config/env";
 import { queryKeys } from "@/api/queries";
 
 /**
@@ -63,7 +63,7 @@ function turnstileToken(): string {
 }
 
 async function post<T>(path: string, body?: unknown): Promise<T> {
-  const response = await fetch(`${env.VITE_PUBLIC_API_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     method: body ? "POST" : "GET",
     // The session is an httpOnly cookie on another origin. Without this the nonce is
     // issued into a session this request will never be part of.
