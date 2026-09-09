@@ -1,0 +1,39 @@
+{
+  "network": "amoy",
+  "chainId": "80002",
+  "deployer": "0x7D26568Bc78f1e9838C2825eE6F283fa5164779B",
+  "deployedAt": "2026-09-09T13:45:00.930Z",
+  "blockNumber": 47139426,
+  "adminTransferDelaySeconds": 259200,
+  "defaultAdmin": "0x7D26568Bc78f1e9838C2825eE6F283fa5164779B",
+  "contracts": {
+    "RoleAccessControl": {
+      "address": "0x2C07f6c5602a87e0486Fd20FaE1fC8F6626104a4",
+      "implementation": "0x1758614451da88E89e56711e195CC28aB7F3C3c6",
+      "kind": "uups-proxy"
+    },
+    "DIDRegistry": {
+      "address": "0xb99f38E7173Ee59CdA504a6a86a0Ca06062276b4",
+      "implementation": "0x48725AEBB7C0672E8BfbB377bE642F17E8bE3925",
+      "kind": "uups-proxy"
+    },
+    "AssetRegistry": {
+      "address": "0xb7f222bbbBc0B6cAc320e8EF6951e0981d47cf7e",
+      "implementation": "0x437f79228D171CecAF64220eF8b4C2fA9C213753",
+      "kind": "uups-proxy"
+    },
+    "CredentialRegistry": {
+      "address": "0xDa540861383ca6963AEb65D7C6D63300d12d08eC",
+      "implementation": "0xBEcc99F1139F59646902a9b0ab83abBa4dd46706",
+      "kind": "uups-proxy"
+    },
+    "AuditTrail": {
+      "address": "0x1A6a0A359119e111E3c33104b38176C1C74e4265",
+      "kind": "immutable"
+    },
+    "TrustChainForwarder": {
+      "address": "0x1CDDbD5EE10503Cba9Ccdb2F3420e8b060768969",
+      "kind": "immutable"
+    }
+  }
+}

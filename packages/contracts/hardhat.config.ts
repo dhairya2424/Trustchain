@@ -1,6 +1,26 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@openzeppelin/hardhat-upgrades";
+import { config as loadEnv } from "dotenv";
+import path from "node:path";
+
+/**
+ * Load this package's own .env before anything reads process.env.
+ *
+ * DEPLOY.md has always told the operator to put AMOY_RPC_URL, DEPLOYER_PRIVATE_KEY and
+ * POLYGONSCAN_API_KEY in `packages/contracts/.env` — but nothing here ever read that file,
+ * so every one of them resolved to "" and `--network amoy` died on `HH117: Empty string for
+ * network URL`. Local work never noticed, because the localhost URL is hardcoded and needs
+ * no key; the gap only appears the first time someone actually deploys to a public chain.
+ *
+ * The path is explicit rather than dotenv's default cwd lookup: hardhat is run from the
+ * repo root as often as from this package, and a config that silently finds no variables
+ * depending on which directory you started in is worse than one that fails.
+ *
+ * `quiet` suppresses dotenv v17's startup banner, which would otherwise print on every
+ * compile and test run.
+ */
+loadEnv({ path: path.resolve(__dirname, ".env"), quiet: true });
 
 const AMOY_RPC_URL = process.env.AMOY_RPC_URL ?? "";
 const DEPLOYER_PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY ?? "";
