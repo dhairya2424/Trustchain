@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 
 import { MotionProvider } from "../motion/MotionProvider";
+import { LiveChainProvider } from "@/chain/LiveChainProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import { buildWagmiConfig } from "../wallet/config";
 
@@ -16,6 +17,10 @@ import { buildWagmiConfig } from "../wallet/config";
  *
  * MotionProvider is outermost because the reduced-motion preference is not specific to
  * wallets or data, and a component anywhere below must be able to ask for it.
+ *
+ * LiveChainProvider sits inside QueryClientProvider because it invalidates queries when the
+ * chain moves, and holds exactly one EventSource for the whole application — a per-component
+ * hook would open one connection per mount and exhaust the browser's six-per-origin limit.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
   const [config] = useState(buildWagmiConfig);
@@ -37,7 +42,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
     <MotionProvider>
       <WagmiProvider config={config}>
         <QueryClientProvider client={queryClient}>
-          <ToastProvider>{children}</ToastProvider>
+          <LiveChainProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </LiveChainProvider>
         </QueryClientProvider>
       </WagmiProvider>
     </MotionProvider>

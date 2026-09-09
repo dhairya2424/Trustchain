@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
 import { env } from "@/config/env";
+import { TransactionTrail } from "@/chain/TransactionTrail";
+import { useNetwork } from "@/api/queries";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +44,11 @@ export function MintWizard() {
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  // The hash of the most recent mint, so its confirmation can be followed after the wizard
+  // resets. Cleared when a new mint starts, never carried between two.
+  const [lastHash, setLastHash] = useState<string | null>(null);
+  // For the explorer link: which chain this landed on, and whether it has an explorer.
+  const network = useNetwork();
   const [fileError, setFileError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -73,6 +80,7 @@ export function MintWizard() {
 
     setSubmitting(true);
     setProgress(0);
+    setLastHash(null);
 
     const toastId = toast.push({
       status: "pending",
@@ -106,12 +114,23 @@ export function MintWizard() {
       }
 
       if (xhr.status >= 200 && xhr.status < 300) {
+        /*
+         * "Submitted", not "minted".
+         *
+         * This fires on a 202 from the relayer, which means the request was accepted and
+         * broadcast — not that the chain has included it. Claiming it was "recorded
+         * on-chain" at this moment asserts something no one has verified yet, and on a
+         * platform whose whole claim is verifiability that is the one thing not to say
+         * loosely. The transaction trail below reports what actually happened.
+         */
+        const hash = typeof parsed.transactionHash === "string" ? parsed.transactionHash : null;
+        setLastHash(hash);
+
         toast.resolve(toastId, {
           status: "success",
-          title: "Asset minted",
-          detail: "The mint is recorded on-chain and attributed to your identity.",
-          reference:
-            typeof parsed.transactionHash === "string" ? parsed.transactionHash : undefined,
+          title: "Mint submitted",
+          detail: "Signed and handed to the relayer. Watch below for confirmation.",
+          reference: hash ?? undefined,
         });
 
         // The audit trail is the source every other panel reads, so invalidating it is what
@@ -335,6 +354,22 @@ export function MintWizard() {
           )}
         </div>
       </div>
+
+      {/*
+       * Outside the wizard's own card, and deliberately after the reset.
+       *
+       * The wizard clears itself on success so another asset can be minted, but the
+       * transaction it just started is still in flight. Keeping this outside that state
+       * means the person can start the next mint without losing sight of the last one.
+       */}
+      {lastHash && (
+        <TransactionTrail
+          hash={lastHash}
+          explorerUrl={network.data?.active?.explorerUrl ?? null}
+          networkLabel={network.data?.active?.label}
+          className="mt-4"
+        />
+      )}
     </div>
   );
 }
