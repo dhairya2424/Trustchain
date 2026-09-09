@@ -1,5 +1,5 @@
 import { motion as fm } from "framer-motion";
-import { FileClock, Coins, Users } from "lucide-react";
+import { BadgeCheck, FileClock, Coins, Users } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
 
 import { NetworkBadge } from "@/components/NetworkBadge";
@@ -25,7 +25,10 @@ import { ConnectButton } from "@/wallet/ConnectButton";
 const SECTIONS = [
   { to: "/admin", end: true, label: "Audit log", icon: FileClock },
   { to: "/admin/mint", end: false, label: "Mint asset", icon: Coins },
-  { to: "/admin/roles", end: false, label: "Roles", icon: Users },
+  { to: "/admin/credentials", end: false, label: "Credentials", icon: BadgeCheck },
+  // "Identities" rather than "Roles": the console now registers the identity a role attaches
+  // to, and naming it for the narrower half would hide the step people arrive needing.
+  { to: "/admin/roles", end: false, label: "Identities", icon: Users },
 ] as const;
 
 export function AdminLayout() {
@@ -74,7 +77,15 @@ export function AdminLayout() {
       </header>
 
       <div className="mt-8 grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)]">
-        <nav aria-label="Admin sections" data-testid="admin-rail">
+        {/*
+          `min-w-0` is load-bearing, not tidying.
+
+          A grid item's default `min-width: auto` is its content's width, so the list below —
+          which scrolls horizontally on a phone — could not shrink: it pushed the whole track
+          wider than the viewport and the *page* scrolled sideways instead of the rail. Adding
+          a fourth section made the rail long enough for that to start happening at 375px.
+        */}
+        <nav aria-label="Admin sections" className="min-w-0" data-testid="admin-rail">
           <ul className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
             {SECTIONS.map((section) => (
               <li key={section.to}>

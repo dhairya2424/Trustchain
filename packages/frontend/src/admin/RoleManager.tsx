@@ -7,6 +7,7 @@ import { useSignTypedData } from "wagmi";
 import { ApiError, apiGet } from "@/api/client";
 import { humanErrorText } from "@/api/errors";
 import { forwardSigned, toSignable, type PreparedTypedData } from "@/api/forward";
+import { usePreparedAction } from "@/api/usePreparedAction";
 import { useSession, type Session } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
@@ -76,11 +77,13 @@ export function RoleManager() {
 
   return (
     <div className="min-w-0">
-      <h2 className="text-base font-semibold">Roles</h2>
+      <h2 className="text-base font-semibold">Identities and roles</h2>
       <p className="mt-1 max-w-[64ch] text-sm leading-relaxed text-fg-muted">
-        Authorization lives in a contract, not a database. Every grant and revocation is itself an
-        on-chain event signed by the administrator who requested it, which is what stops permissions
-        being edited behind the audit trail&rsquo;s back.
+        Authorization lives in a contract, not a database. Roles attach to an identity rather than
+        to a wallet, so look an address up to find the identity behind it — and register one when
+        there is none. Every grant and revocation is itself an on-chain event signed by the
+        administrator who requested it, which is what stops permissions being edited behind the
+        audit trail&rsquo;s back.
       </p>
 
       <form
@@ -252,6 +255,16 @@ function SubjectPanel({
         {isSelf && <Status tone="neutral">This is you</Status>}
       </div>
 
+      {/*
+        The way out of the dead end above.
+
+        Until this existed, "no DID is registered for this address" was the end of the road
+        inside the product: the only remedy was an operator running tools/onboard-wallet.mjs
+        against the deployer key. An administrator was shown a problem and no way to solve
+        it, on the screen built for solving exactly that class of problem.
+      */}
+      {!subject.did && <RegisterIdentity address={subject.address} />}
+
       <div className="overflow-hidden rounded-b-lg border border-x-line border-b-line bg-surface">
         {ROLES.map((role) => {
           const has = held.has(role.id);
@@ -320,6 +333,110 @@ function SubjectPanel({
           that quietly omits it — and the API and contract would both refuse the change regardless.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Registering an identity for an address that has none.
+ *
+ * Appears exactly where the problem does — under the "no DID is registered" line — because an
+ * administrator who has just looked up an address and found nothing should be one click from
+ * the remedy rather than one terminal session. Until this existed, that line was the end of
+ * the road inside the product: the only cure was an operator running
+ * `tools/onboard-wallet.mjs` against the deployer key.
+ *
+ * ## Why this can refuse an ADMIN
+ *
+ * `registerDIDFor` is gated on `ADMIN_ROLE` held **on the DIDRegistry contract**, a separate
+ * grant made at deployment rather than the platform's RoleAccessControl matrix. So an account
+ * can hold the platform's ADMIN role, see this control, and still be refused. The sentence
+ * for that case says exactly that, rather than leaving somebody staring at their own role
+ * badge trying to work out why the thing they are plainly an admin of said no.
+ *
+ * The identity hash is derived by the server from the address and the active network. It is
+ * not chosen here and not supplied by the browser: a client able to name the hash could
+ * register an address under an identity that already means something else.
+ */
+function RegisterIdentity({ address }: { address: string }) {
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const run = usePreparedAction();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const register = async () => {
+    setBusy(true);
+    setError(null);
+
+    const toastId = toast.push({
+      status: "pending",
+      title: "Registering identity",
+      detail: "Sign in your wallet — the registry records you as the administrator who did it.",
+    });
+
+    try {
+      const { prepared, forwarded } = await run(
+        "/identity/register",
+        { address },
+        {
+          403: "Registering an identity needs ADMIN_ROLE on the DIDRegistry contract, which is a separate grant from the platform role you hold. The deployer account holds it.",
+          identity_already_registered: "That address already has an identity.",
+          address_already_has_identity: "That address already controls a different identity.",
+        },
+      );
+
+      toast.resolve(toastId, {
+        status: "success",
+        title: "Identity registered",
+        detail: `${String(prepared.didHash).slice(0, 14)}… now resolves to this address.`,
+        reference: forwarded.transactionHash,
+      });
+
+      // Re-read the lookup so the role switches come alive. The identity is the thing that
+      // was blocking them, and leaving them disabled until a manual refresh would make a
+      // successful registration look like it had not worked.
+      await queryClient.invalidateQueries({ queryKey: ["roles"] });
+      await queryClient.invalidateQueries({ queryKey: ["audit"] });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Registration failed.";
+      setError(message);
+      toast.resolve(toastId, {
+        status: "error",
+        title: "Identity not registered",
+        detail: message,
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="border-x border-line bg-surface px-5 py-4" data-testid="register-identity">
+      <p className="max-w-[68ch] text-sm leading-relaxed text-fg-muted">
+        Registering an identity gives this address a DID that roles and assets can attach to. The
+        record names the address as its own controller, so control stays with them — you are
+        creating the identity, not holding it.
+      </p>
+
+      {error && (
+        <p
+          className="mt-3 max-w-[68ch] text-sm leading-relaxed text-revoked"
+          data-testid="register-error"
+        >
+          {error}
+        </p>
+      )}
+
+      <Button
+        size="sm"
+        className="mt-4"
+        onClick={register}
+        disabled={busy}
+        data-testid="register-identity-submit"
+      >
+        {busy ? "Awaiting signature…" : "Register an identity"}
+      </Button>
     </div>
   );
 }

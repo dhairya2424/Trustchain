@@ -1,11 +1,18 @@
 import { Router } from "express";
-import type { Address, Hex, PublicClient } from "viem";
+import { evmAddress } from "@trustchain/shared";
+import { getAddress, keccak256, toHex, type Address, type Hex, type PublicClient } from "viem";
+import { z } from "zod";
 
 import { asyncHandler } from "../http/middleware";
+import type { CallerResolver } from "../http/authorize";
 import type { Logger } from "../http/logger";
 import type { ChainResolver } from "../chain/binding";
 import { roleNames } from "../auth/roles";
 import { readOwnedAssets } from "../assets/owned";
+import { encodeRegisterDIDFor, prepareForwardedCall } from "../chain/forwarding";
+import { serializeTypedData } from "../chain/forwardRequest";
+import { toNetworkDto } from "../chain/routes";
+import { didHashFor, keyCommitmentFor } from "./didHash";
 
 /**
  * Resolving a decentralized identifier — publicly, with no account.
@@ -46,6 +53,36 @@ const DID_ABI = [
   },
 ] as const;
 
+/**
+ * The DIDRegistry's own access control, which is not the platform's.
+ *
+ * `ADMIN_ROLE` here is a grant on the DIDRegistry contract made at deployment, entirely
+ * separate from the RoleAccessControl matrix. Reading it is how the registration route
+ * discovers what the contract will actually accept, rather than what the platform's
+ * permission model would suggest.
+ */
+const DID_ADMIN_ABI = [
+  {
+    type: "function",
+    name: "hasRole",
+    stateMutability: "view",
+    inputs: [
+      { name: "role", type: "bytes32" },
+      { name: "account", type: "address" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "didOf",
+    stateMutability: "view",
+    inputs: [{ name: "controller", type: "address" }],
+    outputs: [{ type: "bytes32" }],
+  },
+] as const;
+
+const DID_REGISTRY_ADMIN_ROLE = keccak256(toHex("ADMIN_ROLE"));
+
 const ACL_ABI = [
   {
     type: "function",
@@ -59,12 +96,173 @@ const ACL_ABI = [
 export interface IdentityDependencies {
   chain: ChainResolver;
   logger: Logger;
+  /**
+   * Resolves the caller from the session, for registration. Optional so the public resolver
+   * still mounts on a deployment with no auth stack wired — reading an identity needs no
+   * caller, and the registration route refuses when this is absent rather than assuming one.
+   *
+   * Note the caller's own `didHash` may be null here, and that is fine: registration reads
+   * the administrator's *address* to check ADMIN_ROLE on the registry. An administrator
+   * without a DID of their own can still create one for somebody else, which is exactly the
+   * bootstrap case — the deployer holds ADMIN_ROLE from deployment and may hold no identity.
+   */
+  resolveCaller?: CallerResolver;
 }
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+const registerRequest = z.object({ address: evmAddress }).strict();
+
 export function createIdentityRouter(deps: IdentityDependencies): Router {
   const router = Router();
+
+  /**
+   * Register an identity for an address.
+   *
+   * This is the endpoint that makes onboarding a product feature rather than an operator
+   * task. Until it existed the only way to create an identity was `tools/onboard-wallet.mjs`
+   * run against the deployer key, which meant a new user could sign in, see "permission
+   * required" everywhere, and have no path forward that did not involve somebody opening a
+   * terminal.
+   *
+   * ## Why the gate is ADMIN_ROLE on the DIDRegistry, and not REGISTER_DID
+   *
+   * The platform's permission matrix grants `PERM_REGISTER_DID` to both ADMIN and MANAGER.
+   * The contract does not consult it: `registerDIDFor` is `onlyRole(ADMIN_ROLE)` against the
+   * DIDRegistry's *own* AccessControl, which is a separate grant made at deployment and not
+   * the RoleAccessControl matrix that governs everything else.
+   *
+   * So there are two different answers to "may I register an identity", and gating on the
+   * wrong one would be worse than useless: a MANAGER would pass this check, sign a request,
+   * spend relayer gas, and get a revert. The gate therefore asks the contract that will
+   * actually decide. `PERM_REGISTER_DID` is, for now, a permission nothing reads — recorded
+   * in docs/TRACEABILITY.md rather than papered over here.
+   */
+  router.post(
+    "/register",
+    asyncHandler(async (req, res) => {
+      if (!deps.resolveCaller) {
+        res.status(503).json({ error: "registration_unavailable", requestId: req.requestId });
+        return;
+      }
+
+      const caller = await deps.resolveCaller(req);
+      if (!caller) {
+        res.status(401).json({ error: "unauthenticated", requestId: req.requestId });
+        return;
+      }
+
+      const parsed = registerRequest.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({
+          error: "invalid_request",
+          requestId: req.requestId,
+          issues: parsed.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`),
+        });
+        return;
+      }
+
+      const subject = parsed.data.address;
+      const binding = await deps.chain.active();
+      const client = binding.client as PublicClient;
+      const didRegistry = binding.contracts.DIDRegistry as Address;
+
+      const isAdmin = (await client
+        .readContract({
+          address: didRegistry,
+          abi: DID_ADMIN_ABI,
+          functionName: "hasRole",
+          args: [DID_REGISTRY_ADMIN_ROLE, caller.address as Address],
+        })
+        .catch(() => false)) as boolean;
+
+      if (!isAdmin) {
+        deps.logger.log({
+          level: "warn",
+          msg: "security.identity_register_refused",
+          requestId: req.requestId,
+          actor: caller.address,
+          subject,
+          reason: "not_did_registry_admin",
+        });
+        res.status(403).json({ error: "forbidden", requestId: req.requestId });
+        return;
+      }
+
+      const didHash = didHashFor(subject, binding.network.id);
+
+      // Two ways an identity can already exist, and they are different mistakes. The
+      // contract refuses both, but "this address already has an identity" and "this hash is
+      // taken" send an administrator to different places.
+      const [existingController, existingDID] = (await Promise.all([
+        client.readContract({
+          address: didRegistry,
+          abi: DID_ABI,
+          functionName: "controllerOf",
+          args: [didHash],
+        }),
+        client.readContract({
+          address: didRegistry,
+          abi: DID_ADMIN_ABI,
+          functionName: "didOf",
+          args: [subject as Address],
+        }),
+      ])) as [string, string];
+
+      if (existingController && existingController !== ZERO) {
+        res.status(409).json({
+          error: "identity_already_registered",
+          requestId: req.requestId,
+          didHash,
+          controller: existingController,
+        });
+        return;
+      }
+
+      if (existingDID && existingDID !== `0x${"0".repeat(64)}`) {
+        res.status(409).json({
+          error: "address_already_has_identity",
+          requestId: req.requestId,
+          didHash: existingDID,
+        });
+        return;
+      }
+
+      const prepared = await prepareForwardedCall({
+        chain: binding,
+        chainId: binding.network.chainId,
+        // The administrator's own address. Under ERC-2771 the registry recovers this from
+        // the signature, so the ADMIN_ROLE check on-chain is against the human who asked —
+        // not against the relayer that pays.
+        actor: caller.address,
+        target: binding.contracts.DIDRegistry,
+        data: encodeRegisterDIDFor(didHash, subject, keyCommitmentFor(subject)),
+        action: `Register identity for ${subject.slice(0, 10)}...`,
+      });
+
+      deps.logger.log({
+        level: "info",
+        msg: "identity.register_prepared",
+        requestId: req.requestId,
+        actor: caller.address,
+        subject,
+        didHash,
+        network: binding.network.id,
+      });
+
+      // 200, not 202. Nothing is registered until the administrator signs and forwards.
+      res.status(200).json({
+        didHash,
+        // Checksummed for display. The schema lowercases on the way in so comparisons are
+        // total; echoing that back would show an administrator an address that does not
+        // look like the one in their wallet, at the moment they are checking it carefully.
+        controller: getAddress(subject),
+        network: toNetworkDto(binding.network),
+        typedData: serializeTypedData(prepared.typedData),
+        summary: prepared.summary,
+      });
+    }),
+  );
 
   router.get(
     "/:didHash",

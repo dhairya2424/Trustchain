@@ -5,7 +5,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup } from "@testing-library/react";
-import { afterEach } from "vitest";
+import { afterAll, afterEach } from "vitest";
 
 /*
  * Unmount between tests.
@@ -22,6 +22,34 @@ import { afterEach } from "vitest";
  */
 afterEach(() => {
   cleanup();
+});
+
+/*
+ * Let a frame that is already queued actually run, before jsdom is taken away.
+ *
+ * This suite failed intermittently — perhaps one run in three — with an unhandled
+ * `ReferenceError: requestAnimationFrame is not defined`, reported against whichever test
+ * file happened to finish last. Every test passed; the run still exited non-zero, which is
+ * the worst failure mode a suite has, because it teaches people to re-run until green.
+ *
+ * The cause is a race at the boundary rather than a bug in any component. Framer Motion
+ * drives animation from a single frame loop that schedules the next frame from inside the
+ * current one. When the final test ends there may be one frame already queued: `cleanup()`
+ * unmounts everything, but it cannot un-queue a callback the browser has already accepted.
+ * Vitest then tears the jsdom environment down and deletes its globals, the queued callback
+ * fires anyway, and its first act is to ask for the next frame — from a global that no
+ * longer exists.
+ *
+ * Yielding one macrotask here lets that pending frame run while `requestAnimationFrame` is
+ * still there. Finding no mounted components left to animate, the loop declines to schedule
+ * another, and teardown then has nothing in flight to trip over.
+ *
+ * Deliberately not a fake-timer or a global rAF stub: both would silence the symptom while
+ * also disabling the real loop, and this project has animation behaviour it genuinely
+ * asserts — `VerdictBanner` checks that its seal animates unless reduced motion is set.
+ */
+afterAll(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
 });
 
 /*

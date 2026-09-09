@@ -9,6 +9,7 @@ import { AdminLayout } from "./admin/AdminLayout";
 import { AuditLog } from "./admin/AuditLog";
 import { MintWizard } from "./admin/MintWizard";
 import { RoleManager } from "./admin/RoleManager";
+import { CredentialConsole } from "./admin/CredentialConsole";
 import { Verify } from "./routes/Verify";
 import { ConnectButton } from "./wallet/ConnectButton";
 import { cn } from "@/lib/utils";
@@ -149,6 +150,7 @@ export default function App() {
               <Route index element={<AuditLog />} />
               <Route path="mint" element={<MintWizard />} />
               <Route path="roles" element={<RoleManager />} />
+              <Route path="credentials" element={<CredentialConsole />} />
             </Route>
             <Route path="/verify" element={<Verify />} />
             {/*

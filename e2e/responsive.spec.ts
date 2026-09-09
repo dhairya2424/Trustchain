@@ -84,7 +84,15 @@ async function stubApi(page: Page) {
 /** The narrowest phone still worth supporting. */
 const PHONE = { width: 375, height: 812 };
 
-const ROUTES = ["/", "/dashboard", "/admin", "/admin/mint", "/admin/roles", `/verify?hash=${HASH}`];
+const ROUTES = [
+  "/",
+  "/dashboard",
+  "/admin",
+  "/admin/mint",
+  "/admin/credentials",
+  "/admin/roles",
+  `/verify?hash=${HASH}`,
+];
 
 test.describe("no horizontal overflow on a phone", () => {
   for (const route of ROUTES) {

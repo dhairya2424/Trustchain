@@ -373,7 +373,7 @@ function main(): void {
           },
         }
       : {}),
-    ...(selector ? { identity: { chain: selector, logger } } : {}),
+    ...(selector ? { identity: { chain: selector, logger, resolveCaller } } : {}),
     // The live stream needs both an indexer to listen to and a way to check VIEW_AUDIT.
     ...(selector && supervisor
       ? {

@@ -171,6 +171,81 @@ export function encodeMint(toDID: string, tokenURI: string, soulbound: boolean):
   });
 }
 
+/**
+ * ABI-encodes a transfer of an asset from one identity to another.
+ *
+ * `safeTransferFrom` rather than `transferFrom`: the recipient is a DID's controller, which
+ * may be a contract wallet, and the safe variant is the one that refuses to strand a token
+ * in something unable to handle it.
+ *
+ * `from` is the *current controller*, not the sender of the HTTP request and not an address
+ * from the body. Under ERC-2771 the registry sees the signer as `_msgSender()`, so a request
+ * whose `from` is anyone else is refused by the contract's own authorization — this encoding
+ * simply never constructs such a call in the first place.
+ *
+ * Everything that makes a transfer legitimate is enforced in `AssetRegistry._update`, which
+ * every ownership change passes through: the recipient must hold an active DID, a soulbound
+ * token cannot move, and a holder whose key no longer controls the owning DID may not hand
+ * the asset to a third party. The API checks the same conditions first only so the user gets
+ * a sentence rather than a reverted transaction.
+ */
+export function encodeSafeTransferFrom(from: string, to: string, tokenId: number): Hex {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: "function",
+        name: "safeTransferFrom",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "from", type: "address" },
+          { name: "to", type: "address" },
+          { name: "tokenId", type: "uint256" },
+        ],
+        outputs: [],
+      },
+    ] as const,
+    functionName: "safeTransferFrom",
+    args: [from as Address, to as Address, BigInt(tokenId)],
+  });
+}
+
+/**
+ * ABI-encodes the registration of a DID on someone else's behalf.
+ *
+ * `registerDIDFor` rather than `registerDID`, for the same reason the onboarding tool used
+ * it: the subject holds no gas and cannot be asked to. An administrator registers on their
+ * behalf, and the record still names the subject's address as controller, so control is
+ * theirs from the first block.
+ *
+ * The contract requires `ADMIN_ROLE` **on the DIDRegistry itself** — a separate grant from
+ * the platform's RoleAccessControl, made at deployment. That is deliberate on the contract's
+ * part: identity creation is the root every other permission hangs off, so it does not
+ * delegate through the same matrix it ultimately feeds.
+ */
+export function encodeRegisterDIDFor(
+  didHash: string,
+  controller: string,
+  keyCommitment: string,
+): Hex {
+  return encodeFunctionData({
+    abi: [
+      {
+        type: "function",
+        name: "registerDIDFor",
+        stateMutability: "nonpayable",
+        inputs: [
+          { name: "didHash", type: "bytes32" },
+          { name: "controller", type: "address" },
+          { name: "keyCommitment", type: "bytes32" },
+        ],
+        outputs: [],
+      },
+    ] as const,
+    functionName: "registerDIDFor",
+    args: [didHash as Hex, controller as Address, keyCommitment as Hex],
+  });
+}
+
 export function encodeIssueCredential(
   credentialHash: string,
   didHash: string,

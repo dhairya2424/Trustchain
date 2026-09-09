@@ -1,12 +1,15 @@
 import { motion as fm } from "framer-motion";
+import { ArrowRight } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
 import { useMotion } from "@/motion/MotionProvider";
 import { truncateAddress } from "@/lib/utils";
-import type { OwnedAssets } from "@/api/queries";
+import { TransferDialog } from "./TransferDialog";
+import type { OwnedAsset, OwnedAssets } from "@/api/queries";
 
 /**
  * Assets this identity minted, derived from the audit trail.
@@ -35,6 +38,9 @@ export interface AssetGridProps {
 export function AssetGrid({ owned, isLoading, blocked }: AssetGridProps) {
   const motion = useMotion();
   const tokens = owned?.tokens;
+  // Which asset the transfer dialog is about, or none. Held here rather than per card so
+  // only one dialog can ever be open.
+  const [transferring, setTransferring] = useState<OwnedAsset | null>(null);
 
   if (blocked) return <>{blocked}</>;
 
@@ -116,9 +122,48 @@ export function AssetGrid({ owned, isLoading, blocked }: AssetGridProps) {
                 </p>
               )}
             </div>
+
+            {/*
+              Transfer, on the card rather than behind a detail view.
+
+              Ownership is the thing this card asserts, so the action that changes it belongs
+              here. A soulbound token gets the control in a disabled state with the reason
+              attached, rather than no control at all: "why can I not move this one" is a
+              question the interface should answer without being asked.
+            */}
+            <div className="mt-4 flex items-center justify-between gap-3 border-t border-line pt-3">
+              <span className="text-2xs text-fg-faint">
+                {token.soulbound ? "Bound to its identity" : "Owned by your identity"}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={token.soulbound}
+                title={
+                  token.soulbound
+                    ? "Soulbound assets cannot be transferred."
+                    : "Transfer to another identity"
+                }
+                onClick={() => setTransferring(token)}
+                data-testid="asset-transfer"
+              >
+                Transfer
+                <ArrowRight className="size-3.5" aria-hidden="true" />
+              </Button>
+            </div>
           </fm.article>
         ))}
       </div>
+
+      {transferring && (
+        <TransferDialog
+          token={transferring}
+          open
+          onOpenChange={(next) => {
+            if (!next) setTransferring(null);
+          }}
+        />
+      )}
     </>
   );
 }
