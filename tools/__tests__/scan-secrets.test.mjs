@@ -66,4 +66,40 @@ describe("secret scanner", () => {
   it("reports clean content as clean", () => {
     expect(scanContent("export const answer = 42;", { filePath: "src/a.ts" })).toHaveLength(0);
   });
+
+  /**
+   * A private key and a transaction hash are both 32 bytes of hex, so shape alone cannot
+   * separate them — the JSON key does. These tests pin the exclusion to exactly that, since
+   * an over-broad version would quietly stop the scanner catching the thing it exists for.
+   */
+  describe("public chain hashes are not private keys", () => {
+    it("ignores a 32-byte hex under txHash", () => {
+      // OpenZeppelin's upgrades manifest records the transaction that created each proxy.
+      // It must be committed, and it is rewritten on every deploy — so inline allow markers
+      // would be erased each time and this has to hold by rule.
+      const findings = scanContent(`    "txHash": "${EVM_KEY}",`, {
+        filePath: "packages/contracts/.openzeppelin/unknown-80002.json",
+      });
+      expect(findings).toHaveLength(0);
+    });
+
+    it("ignores blockHash too", () => {
+      const findings = scanContent(`  "blockHash": "${EVM_KEY}"`, { filePath: "a.json" });
+      expect(findings).toHaveLength(0);
+    });
+
+    it("still flags the same value under a key that is not a public hash", () => {
+      const findings = scanContent(`  "deployerKey": "${EVM_KEY}"`, { filePath: "a.json" });
+      expect(findings.map((f) => f.patternId)).toContain("evm-private-key");
+    });
+
+    it("still flags a bare key on a line that merely mentions txHash", () => {
+      // The hex must be the value that key introduces. Naming a field nearby is not enough,
+      // or "// see txHash above" would launder a pasted key.
+      const findings = scanContent(`const pk = "${EVM_KEY}"; // next to txHash`, {
+        filePath: "src/a.ts",
+      });
+      expect(findings.map((f) => f.patternId)).toContain("evm-private-key");
+    });
+  });
 });

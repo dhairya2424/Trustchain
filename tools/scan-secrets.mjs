@@ -107,6 +107,34 @@ function redact(match) {
   return `${match.slice(0, 4)}${"*".repeat(Math.min(match.length - 8, 24))}${match.slice(-4)}`;
 }
 
+/**
+ * JSON keys whose value is a 32-byte hash by definition, and public by definition.
+ *
+ * An EVM private key and a transaction hash are both 32 bytes of hex, so no regex can tell
+ * them apart from shape alone. The field name can: nothing writes a private key under
+ * `txHash`, and everything that publishes a chain reference does.
+ *
+ * This became necessary when the Amoy deployment landed. OpenZeppelin's upgrades plugin
+ * writes a manifest recording the transaction that created each proxy and implementation —
+ * eight `txHash` entries, every one a real, public, already-mined Amoy transaction, and
+ * every one flagged as a possible private key. The manifest must be committed (it is how
+ * upgrade safety is checked later) and it is regenerated on every deploy, so inline allow
+ * markers would be erased and have to be re-added each time.
+ *
+ * The exclusion is deliberately narrow: it applies only to the private-key pattern, only
+ * when the hex sits in the value position of one of these keys on the same line. A key
+ * pasted under any other name, or bare in a file, still fails the scan.
+ */
+const PUBLIC_HASH_KEYS =
+  /"(?:tx|transaction)Hash"|"blockHash"|"parentHash"|"receiptsRoot"|"stateRoot"|"transactionsRoot"|"commit"|"sha"/i;
+
+function isPublicChainHash(line, value) {
+  if (!PUBLIC_HASH_KEYS.test(line)) return false;
+  // The hex must be the value that key introduces, not merely present on a busy line.
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`${PUBLIC_HASH_KEYS.source}\\s*:\\s*"${escaped}"`, "i").test(line);
+}
+
 /** Scan a string. Returns [{ patternId, description, line, redacted }]. */
 export function scanContent(content, { filePath = "<memory>" } = {}) {
   if (isAllowlisted(filePath)) return [];
@@ -122,6 +150,7 @@ export function scanContent(content, { filePath = "<memory>" } = {}) {
       for (const match of line.matchAll(pattern.regex)) {
         const value = match[0];
         if (PLACEHOLDER.test(value)) continue;
+        if (pattern.id === "evm-private-key" && isPublicChainHash(line, value)) continue;
 
         findings.push({
           filePath,
