@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Status } from "@/components/ui/status";
 import { useMotion } from "@/motion/MotionProvider";
 import { truncateAddress } from "@/lib/utils";
-import type { AuditEntry } from "@/api/queries";
+import type { OwnedAssets } from "@/api/queries";
 
 /**
  * Assets this identity minted, derived from the audit trail.
@@ -25,18 +25,20 @@ import type { AuditEntry } from "@/api/queries";
  */
 
 export interface AssetGridProps {
-  mints: AuditEntry[] | undefined;
+  /** Tokens the contract says this address owns. */
+  owned: OwnedAssets | undefined;
   isLoading: boolean;
-  /** Rendered when the caller cannot read the audit trail at all. */
+  /** Rendered when the tokens could not be read at all. */
   blocked?: React.ReactNode;
 }
 
-export function AssetGrid({ mints, isLoading, blocked }: AssetGridProps) {
+export function AssetGrid({ owned, isLoading, blocked }: AssetGridProps) {
   const motion = useMotion();
+  const tokens = owned?.tokens;
 
   if (blocked) return <>{blocked}</>;
 
-  if (isLoading && !mints) {
+  if (isLoading && !tokens) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="assets-loading">
         {[0, 1, 2].map((card) => (
@@ -50,42 +52,74 @@ export function AssetGrid({ mints, isLoading, blocked }: AssetGridProps) {
     );
   }
 
-  if (!mints || mints.length === 0) {
+  if (!tokens || tokens.length === 0) {
     return (
       <EmptyState
         illustration="assets"
         title="No assets yet"
-        body="Assets you mint appear here with their provenance. Each one is an NFT whose metadata lives on IPFS and whose history is a chain of events nobody can quietly rewrite."
+        body="Assets you own appear here with their provenance. Each one is an NFT whose metadata lives on IPFS and whose history is a chain of events nobody can quietly rewrite."
       />
     );
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="asset-grid">
-      {mints.map((mint, index) => (
-        <fm.article
-          key={mint.entryId}
-          className="group panel p-4 transition-colors hover:border-line-strong"
-          initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={motion.transition("base", motion.stagger(index, 0.07))}
-          // Lift on hover, but no glow: elevation is the signal, and a coloured halo would
-          // spend a hue that means nothing here.
-          whileHover={motion.reduced ? undefined : { y: -3 }}
-          data-testid="asset-card"
-        >
-          <AssetArtwork />
+    <>
+      {/*
+        The contract's own count, when the list cannot account for all of it.
+        
+        Ownership is read by walking the token id space, and that walk is bounded. Showing
+        eight of twelve as though it were everything would tell somebody they own less than
+        they do, so the shortfall is stated rather than hidden.
+      */}
+      {owned.truncated && (
+        <p className="mb-3 text-sm text-fallback" data-testid="asset-truncated">
+          Showing {tokens.length} of {owned.balance} tokens the contract reports for this address.
+          The rest are beyond this scan.
+        </p>
+      )}
 
-          <div className="mt-4 space-y-1.5">
-            <p className="font-mono text-xs text-fg-faint">{truncateAddress(mint.refHash)}</p>
-            <p className="text-base font-medium">Minted asset</p>
-            <p className="font-mono text-2xs text-fg-faint">
-              block {mint.blockNumber} · {truncateAddress(mint.transactionHash)}
-            </p>
-          </div>
-        </fm.article>
-      ))}
-    </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="asset-grid">
+        {tokens.map((token, index) => (
+          <fm.article
+            key={token.tokenId}
+            className="group panel p-4 transition-colors hover:border-line-strong"
+            initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motion.transition("base", motion.stagger(index, 0.07))}
+            // Lift on hover, but no glow: elevation is the signal, and a coloured halo would
+            // spend a hue that means nothing here.
+            whileHover={motion.reduced ? undefined : { y: -3 }}
+            data-testid="asset-card"
+          >
+            <AssetArtwork />
+
+            <div className="mt-4 space-y-1.5">
+              <p className="font-mono text-xs text-fg-faint">#{token.tokenId}</p>
+              <p className="text-base font-medium">
+                Asset {token.tokenId}
+                {token.soulbound && (
+                  <span className="ml-2 font-normal text-2xs text-fg-faint">soulbound</span>
+                )}
+              </p>
+              {owned.explorerUrl ? (
+                <a
+                  className="inline-block font-mono text-2xs text-fg-faint underline underline-offset-4 transition-colors hover:text-fg"
+                  href={`${owned.explorerUrl}/token/${owned.assetRegistry}?a=${token.tokenId}`}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                >
+                  view on the explorer ↗
+                </a>
+              ) : (
+                <p className="font-mono text-2xs text-fg-faint">
+                  {truncateAddress(owned.assetRegistry)}
+                </p>
+              )}
+            </div>
+          </fm.article>
+        ))}
+      </div>
+    </>
   );
 }
 

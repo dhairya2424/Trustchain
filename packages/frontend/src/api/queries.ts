@@ -62,6 +62,7 @@ export const queryKeys = {
   session: ["session"] as const,
   network: ["network"] as const,
   activity: (actor: string | undefined) => ["audit", "activity", actor ?? "anon"] as const,
+  ownedAssets: ["assets", "owned"] as const,
 };
 
 /**
@@ -100,6 +101,45 @@ export function useSessionSnapshot() {
     enabled: false,
     retry: false,
     staleTime: 60_000,
+  });
+}
+
+/** One token the connected address actually owns, per the contract. */
+export interface OwnedAsset {
+  tokenId: number;
+  tokenURI: string | null;
+  ownerDidHash: string | null;
+  soulbound: boolean;
+}
+
+export interface OwnedAssets {
+  owner: string;
+  /** What the contract reports. The number the list has to account for. */
+  balance: number;
+  tokens: OwnedAsset[];
+  /** True when fewer tokens were found than the balance — an incomplete answer. */
+  truncated: boolean;
+  totalMinted: number;
+  network: string;
+  explorerUrl: string | null;
+  assetRegistry: string;
+}
+
+/**
+ * The tokens the signed-in address owns.
+ *
+ * Replaces deriving "my assets" from the audit trail, which answered a different question —
+ * what you *minted* — and so was wrong in both directions: a token minted and transferred
+ * away still showed, one transferred to you never did. It also needed VIEW_AUDIT, so an
+ * ordinary user was told they lacked permission to see their own property.
+ */
+export function useOwnedAssets(enabled: boolean) {
+  return useQuery<OwnedAssets, ApiError>({
+    queryKey: queryKeys.ownedAssets,
+    queryFn: ({ signal }) => apiGet<OwnedAssets>("/assets/owned", signal),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
   });
 }
 

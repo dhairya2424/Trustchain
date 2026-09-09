@@ -44,6 +44,18 @@ function entry(over: Partial<AuditEntry> & { entryId: number; action: string }):
   };
 }
 
+/** What GET /assets/owned answers with — ownership read from the contract. */
+const OWNED = {
+  owner: ME,
+  balance: 1,
+  tokens: [{ tokenId: 7, tokenURI: null, ownerDidHash: "0xdid", soulbound: false }],
+  truncated: false,
+  totalMinted: 9,
+  network: "amoy",
+  explorerUrl: "https://amoy.polygonscan.com",
+  assetRegistry: "0xb7f222bbbBc0B6cAc320e8EF6951e0981d47cf7e",
+};
+
 /** Routes fetch by path, so a test can describe the whole API surface it needs. */
 function mockApi(routes: Record<string, { status?: number; body?: unknown }>) {
   vi.stubGlobal(
@@ -149,11 +161,14 @@ describe("Dashboard — derived panels", () => {
   beforeEach(() => {
     mockApi({
       "/auth/session": { body: SESSION },
+      "/assets/owned": { body: OWNED },
       "/audit": { body: { entries, nextCursor: null, source: "chain" } },
     });
   });
 
-  it("shows a minted asset derived from the audit trail", async () => {
+  it("shows the tokens the contract says the address owns", async () => {
+    // Ownership, not authorship. This used to be derived from ASSET_MINTED events, which
+    // answers "what did you mint" — wrong in both directions once a token is transferred.
     renderWithProviders(<Dashboard />, { wagmi: true });
 
     await waitFor(() => expect(screen.getByTestId("asset-grid")).toBeInTheDocument());
@@ -161,8 +176,8 @@ describe("Dashboard — derived panels", () => {
   });
 
   it("never invents artwork for an asset whose metadata it does not have", async () => {
-    // The audit entry carries no CID, so there is no image to show. A stock picture here
-    // would be a fabricated record on the one screen that must not fabricate.
+    // No CID has been resolved, so there is no image to show. A stock picture here would be
+    // a fabricated record on the one screen that must not fabricate.
     renderWithProviders(<Dashboard />, { wagmi: true });
 
     await waitFor(() => expect(screen.getByTestId("asset-grid")).toBeInTheDocument());
@@ -207,16 +222,20 @@ describe("Dashboard — derived panels", () => {
 });
 
 describe("Dashboard — the three kinds of nothing", () => {
-  it("says 'no assets yet' when the trail is genuinely empty", async () => {
+  it("says 'no assets yet' when the contract reports a zero balance", async () => {
     mockApi({
       "/auth/session": { body: SESSION },
+      "/assets/owned": {
+        body: { ...OWNED, balance: 0, tokens: [], totalMinted: 0 },
+      },
       "/audit": { body: { entries: [], nextCursor: null } },
     });
 
     renderWithProviders(<Dashboard />, { wagmi: true });
 
-    await waitFor(() => expect(screen.getAllByTestId("empty-state").length).toBeGreaterThan(0));
-    expect(screen.getByText("No assets yet")).toBeInTheDocument();
+    // Waits on the assets panel specifically. Waiting on "any empty state" raced the
+    // credentials panel, which settles first and is a different query.
+    await waitFor(() => expect(screen.getByText("No assets yet")).toBeInTheDocument());
   });
 
   it("says a missing permission is a permission problem, not an empty history", async () => {

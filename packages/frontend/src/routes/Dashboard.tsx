@@ -2,7 +2,7 @@ import { motion as fm } from "framer-motion";
 import { useMemo } from "react";
 
 import { ApiError } from "@/api/client";
-import { useActivity, useSession, type AuditEntry } from "@/api/queries";
+import { useActivity, useOwnedAssets, useSession, type AuditEntry } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,11 +24,15 @@ import { ConnectButton } from "@/wallet/ConnectButton";
  * independently verifiable, a convincing fake record is the one thing that would undermine
  * it, and a dashboard is exactly where such a fake would be most persuasive.
  *
- * That honesty costs something, and it shows. The asset and credential panels are derived
- * from the audit trail rather than from a dedicated endpoint, because no such endpoint
- * exists yet; they say so where they cannot answer fully. Reading the trail also needs the
- * VIEW_AUDIT permission, so an account without it sees the RBAC working rather than an
- * empty page pretending nothing has happened.
+ * Each panel reads the source that actually answers its question. Assets come from the
+ * registry, because ownership is a fact the contract holds — deriving them from
+ * ASSET_MINTED events answered "what did you mint", which is wrong in both directions once
+ * a token moves, and needed VIEW_AUDIT to see your own property. Credentials are still
+ * derived from the trail, because no dedicated endpoint exists for them yet, and they say
+ * so where they cannot answer fully.
+ *
+ * Reading the trail needs VIEW_AUDIT, so an account without it sees the RBAC working rather
+ * than an empty page pretending nothing has happened.
  */
 
 const SHELL = "shell";
@@ -39,9 +43,11 @@ export function Dashboard() {
   const address = session.data?.address;
 
   const activity = useActivity(address);
+  // Ownership comes from the contract, not from who minted — and needs no VIEW_AUDIT.
+  const owned = useOwnedAssets(Boolean(address));
   const entries = activity.data?.entries;
 
-  const { mints, issued, revoked } = useMemo(() => partition(entries), [entries]);
+  const { issued, revoked } = useMemo(() => partition(entries), [entries]);
 
   // Not signed in is the ordinary first state, not an error.
   if (session.isError && session.error.isUnauthenticated) {
@@ -113,9 +119,9 @@ export function Dashboard() {
       <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-4">
         {[
           {
-            value: mints.length,
-            label: "Assets minted",
-            unavailable: auditError ? "Requires the audit trail" : undefined,
+            value: owned.data?.balance ?? 0,
+            label: "Assets owned",
+            unavailable: owned.isError ? "Could not read the registry" : undefined,
           },
           {
             value: issued.length,
@@ -182,7 +188,11 @@ export function Dashboard() {
           My assets
         </h2>
         <div className="mt-4">
-          <AssetGrid mints={mints} isLoading={activity.isLoading} blocked={blocked} />
+          <AssetGrid
+            owned={owned.data}
+            isLoading={owned.isLoading}
+            blocked={owned.isError ? <AssetsUnavailable /> : undefined}
+          />
         </div>
       </fm.section>
 
@@ -271,17 +281,39 @@ function DashboardSkeleton() {
 
 /** Splits one audit page into the three views this page needs. */
 function partition(entries: AuditEntry[] | undefined) {
-  const mints: AuditEntry[] = [];
   const issued: AuditEntry[] = [];
   const revoked: AuditEntry[] = [];
 
+  // ASSET_MINTED is deliberately not collected any more. It answers "what did this address
+  // mint", which is not "what does it own" — the asset panel reads ownership from the
+  // registry instead, so a token that was transferred away stops appearing and one
+  // transferred in starts.
   for (const event of entries ?? []) {
-    if (event.action === "ASSET_MINTED") mints.push(event);
-    else if (event.action === "CREDENTIAL_ISSUED") issued.push(event);
+    if (event.action === "CREDENTIAL_ISSUED") issued.push(event);
     else if (event.action === "CREDENTIAL_REVOKED") revoked.push(event);
   }
 
-  return { mints, issued, revoked };
+  return { issued, revoked };
+}
+
+/**
+ * Ownership could not be read.
+ *
+ * Deliberately different from the audit panels' message: this is not a permissions problem.
+ * Owning a token requires no role, so a failure here means the registry or the network is
+ * unreachable — and saying "permission required" would send somebody to ask for a role that
+ * would not help.
+ */
+function AssetsUnavailable() {
+  return (
+    <div className="panel px-5 py-8 text-center" data-testid="assets-unavailable">
+      <Status tone="fallback">Unavailable</Status>
+      <p className="mx-auto mt-3 max-w-[48ch] text-sm leading-relaxed text-fg-muted">
+        The asset registry could not be read, so what you own is unknown rather than empty. This is
+        not a permissions problem — ownership needs no role.
+      </p>
+    </div>
+  );
 }
 
 function PanelBlocked({ error }: { error: ApiError }) {

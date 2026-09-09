@@ -6,6 +6,9 @@ import { z } from "zod";
 import type { PermissionReader } from "../auth/roleReader";
 import { requirePermission, type CallerResolver } from "../http/authorize";
 import type { Logger } from "../http/logger";
+import type { Address } from "viem";
+
+import { readOwnedAssets } from "./owned";
 import { asyncHandler } from "../http/middleware";
 import { stripMetadata } from "./metadata";
 import type { MalwareScanner } from "./malware";
@@ -225,6 +228,42 @@ export function createAssetRouter(deps: AssetDependencies): Router {
         // Sign this, then POST it to /network/forward.
         typedData: serializeTypedData(prepared.typedData),
         summary: prepared.summary,
+      });
+    }),
+  );
+
+  /*
+   * The caller's own tokens, read from the chain.
+   *
+   * Registered before "/:tokenId" deliberately: Express matches in order, so the parameter
+   * route would otherwise swallow "owned" and try to parse it as a token id.
+   *
+   * Requires only a session. Ownership of your own property is not an audit question, and
+   * making it one is why an ordinary user was told they lacked VIEW_AUDIT to see their own
+   * assets.
+   */
+  router.get(
+    "/owned",
+    asyncHandler(async (req, res) => {
+      const caller = await deps.resolveCaller(req);
+      if (!caller) {
+        res.status(401).json({ error: "unauthenticated", requestId: req.requestId });
+        return;
+      }
+
+      const binding = await deps.chain.active();
+      const owned = await readOwnedAssets({
+        client: binding.client,
+        assetRegistry: binding.contracts.AssetRegistry as Address,
+        owner: caller.address as Address,
+      });
+
+      res.json({
+        ...owned,
+        // Which chain answered, so the client never has to assume.
+        network: binding.network.id,
+        explorerUrl: binding.network.explorerUrl,
+        assetRegistry: binding.contracts.AssetRegistry,
       });
     }),
   );
