@@ -109,7 +109,7 @@ export function QrScanner({ onResult, onClose }: QrScannerProps) {
   }, [onResult]);
 
   return (
-    <div className="rounded-lg border border-line bg-surface p-4" data-testid="qr-scanner">
+    <div className="panel p-4" data-testid="qr-scanner">
       <div className="flex items-center justify-between gap-3">
         <Status tone="neutral">Scanning</Status>
         <Button variant="ghost" size="sm" onClick={onClose}>
@@ -118,7 +118,7 @@ export function QrScanner({ onResult, onClose }: QrScannerProps) {
       </div>
 
       {error ? (
-        <p className="mt-4 text-[13px] text-fg-muted" data-testid="qr-error">
+        <p className="mt-4 text-sm text-fg-muted" data-testid="qr-error">
           {error}
         </p>
       ) : (
@@ -136,7 +136,7 @@ export function QrScanner({ onResult, onClose }: QrScannerProps) {
         </div>
       )}
 
-      <p className="mt-3 text-[12px] text-fg-faint">
+      <p className="mt-3 text-xs text-fg-faint">
         Point the camera at a credential QR code. Nothing is uploaded — decoding happens on this
         device, and only the decoded value is sent to be verified.
       </p>

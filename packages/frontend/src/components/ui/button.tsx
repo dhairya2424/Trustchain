@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 const buttonVariants = cva(
   cn(
     "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium",
-    "rounded-[--radius] transition-colors duration-150",
+    "rounded-[--radius] transition-colors",
     "disabled:pointer-events-none disabled:opacity-45",
     // 44px is the smallest reliably tappable target; below it, thumbs miss.
     "min-h-11",
@@ -36,9 +36,9 @@ const buttonVariants = cva(
         danger: "border border-revoked/45 text-revoked hover:bg-revoked/10",
       },
       size: {
-        sm: "h-9 min-h-9 px-3 text-[13px]",
-        md: "px-4 text-[14px]",
-        lg: "px-6 text-[15px]",
+        sm: "h-9 min-h-9 px-3 text-sm",
+        md: "px-4 text-base",
+        lg: "px-6 text-base",
       },
     },
     defaultVariants: { variant: "primary", size: "md" },

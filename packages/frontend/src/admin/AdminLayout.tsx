@@ -34,16 +34,14 @@ export function AdminLayout() {
 
   if (session.isError && session.error.isUnauthenticated) {
     return (
-      <section className="mx-auto w-full max-w-[1200px] px-4 py-16 sm:px-6">
-        <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-fg-faint">
-          Mission control
-        </p>
+      <section className="shell py-12">
+        <p className="font-mono eyebrow">Mission control</p>
         <h1 className="mt-2 text-title">Admin console</h1>
         <div
-          className="mt-8 flex flex-wrap items-center justify-between gap-5 rounded-lg border border-line bg-surface px-6 py-6"
+          className="mt-8 flex flex-wrap items-center justify-between gap-5 panel px-6 py-6"
           data-testid="admin-signin"
         >
-          <p className="max-w-[52ch] text-[14px] text-fg-muted">
+          <p className="max-w-[52ch] text-base text-fg-muted">
             The console acts on your behalf, so it needs to know who you are. Sign in with a wallet
             — every action here is signed by you and attributed to you on-chain.
           </p>
@@ -54,12 +52,10 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1400px] px-4 py-10 sm:px-6">
+    <div className="shell shell-wide py-12">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line pb-6">
         <div>
-          <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-fg-faint">
-            Mission control
-          </p>
+          <p className="font-mono eyebrow">Mission control</p>
           <h1 className="mt-2 text-title">Admin console</h1>
         </div>
 
@@ -67,7 +63,7 @@ export function AdminLayout() {
           {session.data?.roles.map((role) => (
             <span
               key={role}
-              className="rounded border border-line-strong px-2 py-0.5 font-mono text-[11.5px] text-fg-muted"
+              className="rounded border border-line-strong px-2 py-0.5 font-mono text-2xs text-fg-muted"
               data-testid="admin-role"
             >
               {role}
@@ -87,7 +83,7 @@ export function AdminLayout() {
                   end={section.end}
                   className={({ isActive }) =>
                     cn(
-                      "relative flex items-center gap-2.5 whitespace-nowrap rounded px-3 py-2 text-[13.5px] transition-colors",
+                      "relative flex items-center gap-2.5 whitespace-nowrap rounded px-3 py-2 text-sm transition-colors",
                       isActive
                         ? "font-medium text-fg"
                         : "font-normal text-fg-muted hover:bg-hover/60 hover:text-fg",
@@ -117,7 +113,7 @@ export function AdminLayout() {
             ))}
           </ul>
 
-          <p className="mt-6 hidden border-t border-line pt-4 text-[12px] leading-relaxed text-fg-faint lg:block">
+          <p className="mt-6 hidden border-t border-line pt-4 text-xs leading-relaxed text-fg-faint lg:block">
             Every action here is signed in your wallet and recorded on-chain against your identity,
             not the relayer&rsquo;s.
           </p>

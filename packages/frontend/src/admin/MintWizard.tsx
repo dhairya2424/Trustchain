@@ -153,8 +153,8 @@ export function MintWizard() {
 
   return (
     <div className="min-w-0">
-      <h2 className="text-[15px] font-semibold">Mint an asset</h2>
-      <p className="mt-1 text-[13px] text-fg-muted">
+      <h2 className="text-base font-semibold">Mint an asset</h2>
+      <p className="mt-1 text-sm text-fg-muted">
         Artwork is pinned to IPFS; the chain stores the pointer and the provenance.
       </p>
 
@@ -163,7 +163,7 @@ export function MintWizard() {
           <li key={label} className="flex items-center gap-2">
             <span
               className={cn(
-                "flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] transition-colors",
+                "flex items-center gap-2 rounded-full border px-3 py-1 text-xs transition-colors",
                 index === step
                   ? "border-fg text-fg"
                   : index < step
@@ -173,7 +173,7 @@ export function MintWizard() {
               data-testid="wizard-step"
               data-state={index === step ? "current" : index < step ? "done" : "todo"}
             >
-              <span className="font-mono text-[11px]">{index + 1}</span>
+              <span className="font-mono text-2xs">{index + 1}</span>
               {label}
             </span>
             {index < STEPS.length - 1 && <span className="h-px w-6 bg-line" aria-hidden="true" />}
@@ -181,7 +181,7 @@ export function MintWizard() {
         ))}
       </ol>
 
-      <div className="mt-6 rounded-lg border border-line bg-surface p-6">
+      <div className="mt-6 panel p-6">
         <AnimatePresence mode="wait">
           <fm.div
             key={step}
@@ -193,28 +193,24 @@ export function MintWizard() {
             {step === 0 && (
               <div className="grid gap-4" data-testid="wizard-details">
                 <label className="block">
-                  <span className="mb-1.5 block text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-                    Name
-                  </span>
+                  <span className="mb-1.5 block eyebrow">Name</span>
                   <input
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     maxLength={120}
-                    className="w-full rounded border border-line bg-base px-3 py-2 text-[14px]"
+                    className="w-full rounded border border-line bg-base px-3 py-2 text-base"
                     data-testid="mint-name"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-                    Description
-                  </span>
+                  <span className="mb-1.5 block eyebrow">Description</span>
                   <textarea
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     rows={4}
                     maxLength={2000}
-                    className="w-full resize-y rounded border border-line bg-base px-3 py-2 text-[14px]"
+                    className="w-full resize-y rounded border border-line bg-base px-3 py-2 text-base"
                     data-testid="mint-description"
                   />
                 </label>
@@ -240,8 +236,8 @@ export function MintWizard() {
                   {file ? (
                     <div className="space-y-2">
                       <Status tone="verified">File ready</Status>
-                      <p className="font-mono text-[12.5px] text-fg">{file.name}</p>
-                      <p className="text-[12px] text-fg-faint">
+                      <p className="font-mono text-xs text-fg">{file.name}</p>
+                      <p className="text-xs text-fg-faint">
                         {(file.size / 1024).toFixed(0)} KB · {file.type || "unknown type"}
                       </p>
                       <Button variant="ghost" size="sm" onClick={() => setFile(null)}>
@@ -251,11 +247,11 @@ export function MintWizard() {
                   ) : (
                     <div className="space-y-3">
                       <UploadCloud className="mx-auto size-7 text-fg-faint" aria-hidden="true" />
-                      <p className="text-[13.5px] text-fg-muted">Drop an image here, or</p>
+                      <p className="text-sm text-fg-muted">Drop an image here, or</p>
                       <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
                         Browse files
                       </Button>
-                      <p className="text-[11.5px] text-fg-faint">
+                      <p className="text-2xs text-fg-faint">
                         Up to 10 MB. The server checks the actual content, not the filename.
                       </p>
                     </div>
@@ -279,7 +275,7 @@ export function MintWizard() {
                 </div>
 
                 {fileError && (
-                  <p className="mt-3 text-[13px] text-revoked" data-testid="file-error">
+                  <p className="mt-3 text-sm text-revoked" data-testid="file-error">
                     {fileError}
                   </p>
                 )}
@@ -294,13 +290,13 @@ export function MintWizard() {
                 <ProgressRing value={progress} active={submitting} />
 
                 <div>
-                  <h3 className="text-[14px] font-semibold">Confirm</h3>
-                  <p className="mt-1 max-w-[52ch] text-[13px] leading-relaxed text-fg-muted">
+                  <h3 className="text-base font-semibold">Confirm</h3>
+                  <p className="mt-1 max-w-[52ch] text-sm leading-relaxed text-fg-muted">
                     This mint will be signed for by the relayer but attributed on-chain to your
                     identity. It cannot be undone — a mint is a permanent record.
                   </p>
 
-                  <dl className="mt-4 space-y-2 text-[13px]">
+                  <dl className="mt-4 space-y-2 text-sm">
                     <Summary term="Name">{name}</Summary>
                     <Summary term="Description">{description}</Summary>
                     <Summary term="File">
@@ -346,7 +342,7 @@ export function MintWizard() {
 function Summary({ term, children }: { term: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3">
-      <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">{term}</dt>
+      <dt className="eyebrow">{term}</dt>
       <dd className="text-fg-muted [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
@@ -384,7 +380,7 @@ function ProgressRing({ value, active }: { value: number; active: boolean }) {
           style={{ transition: "stroke-dashoffset 200ms linear" }}
         />
       </svg>
-      <span className="absolute font-mono text-[13px] tabular text-fg-muted">
+      <span className="absolute font-mono text-sm tabular text-fg-muted">
         {active ? `${Math.round(clamped * 100)}%` : "ready"}
       </span>
     </div>

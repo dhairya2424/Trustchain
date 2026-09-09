@@ -50,6 +50,59 @@ anything interactive.
 Never use a status colour for anything that is not that status. If you want emphasis, reach
 for weight, size or a rule.
 
+## The type scale
+
+Six steps, and the discipline is that there is no seventh.
+
+| Token                         | Size   | For                        |
+| ----------------------------- | ------ | -------------------------- |
+| `text-2xs`                    | 11px   | eyebrows, micro labels     |
+| `text-xs`                     | 12.4px | metadata, captions, hashes |
+| `text-sm`                     | 13.6px | secondary body, dense UI   |
+| `text-base`                   | 15px   | body                       |
+| `text-lg`                     | 17px   | card and panel titles      |
+| `text-xl`                     | 22px   | sub-section titles         |
+| `text-title` / `text-display` | fluid  | page and hero headings     |
+
+This replaced **thirteen** ad-hoc `text-[13px]`-style values that had drifted into
+near-duplicate pairs — 13 and 13.5, 12 and 12.5, 11 and 11.5. Differences that small are
+too fine to read as hierarchy and too coarse to be free: a reader perceives them as
+sloppiness without being able to name why.
+
+Line heights are defined with each size, because a size without its leading is half a
+decision and the other half ends up scattered across components.
+
+`npm run design:check` fails the build if an ad-hoc pixel size reappears. A type scale
+erodes one `text-[13px]` at a time, and each one looks harmless on its own.
+
+## Shared idioms
+
+Three patterns were being written out by hand often enough to drift:
+
+- **`.panel`** — `rounded-lg border border-line bg-surface`, previously inline in 21 places.
+  Naming it also makes the exceptions legible: a panel that deliberately differs now says so
+  by _not_ using the class.
+- **`.eyebrow` / `.section-label`** — the uppercase label above a section or beside a value.
+  It had four different letter-spacings for one idiom, which reads as a wobble rather than
+  a choice. One `--tracking-label` now.
+- **`.shell`** — the content column. Pages previously declared 1200px, 1400px and 900px
+  independently, so the left edge of the content _moved_ as you navigated. That is the most
+  visible alignment failure a multi-page app can have and the least likely to be reported,
+  because it registers as unease rather than as a bug. Two deliberate variants remain:
+  `shell-wide` for the admin console, which carries a rail plus a table, and
+  `shell-reading` for the verifier, which is one column of prose held to a readable measure.
+
+## Typographic detail
+
+Headings use `text-wrap: balance` so words distribute evenly rather than stranding one on
+the last line; body copy uses `text-wrap: pretty` to avoid orphans. Both degrade silently
+where unsupported and cost nothing.
+
+Anything an in-page anchor targets carries `scroll-margin-top`. Without it "Skip to content"
+scrolls the target under the sticky header, so a keyboard user taking the shortcut lands on
+content they cannot see — a bug invisible to anyone using a mouse, which is why it survives
+review.
+
 ## Colour is never the only carrier
 
 Roughly one in twelve men cannot reliably separate the green from the amber, and "is this

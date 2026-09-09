@@ -28,7 +28,7 @@ export function ConnectButton() {
         className="gap-2"
       >
         <span className="size-1.5 rounded-full bg-verified" aria-hidden="true" />
-        <span className="font-mono tabular text-[13px]">{truncateAddress(address)}</span>
+        <span className="font-mono tabular text-sm">{truncateAddress(address)}</span>
       </Button>
     );
   }

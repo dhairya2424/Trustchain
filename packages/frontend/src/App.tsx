@@ -49,16 +49,16 @@ export default function App() {
       */}
       <a
         href="#main"
-        className="absolute left-3 top-0 z-100 -translate-y-full rounded-b bg-fg px-4 py-2 text-[13px] font-medium text-base transition-transform focus:translate-y-0"
+        className="absolute left-3 top-0 z-100 -translate-y-full rounded-b bg-fg px-4 py-2 text-sm font-medium text-base transition-transform focus:translate-y-0"
       >
         Skip to content
       </a>
 
       <header className="sticky top-0 z-40 border-b border-line bg-base/85 backdrop-blur-md">
-        <div className="mx-auto flex min-h-15 w-full max-w-[1200px] flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
+        <div className="shell flex min-h-15 flex-wrap items-center gap-x-6 gap-y-2 py-2.5">
           <NavLink
             to="/"
-            className="flex items-center gap-2.5 text-[15px] font-semibold tracking-tight text-fg"
+            className="flex items-center gap-2.5 text-base font-semibold tracking-tight text-fg"
             aria-label="TrustChain home"
           >
             {/* A drawn mark, not a gradient chip: two linked squares, offset. */}
@@ -84,7 +84,7 @@ export default function App() {
                 onFocus={warm(item.to)}
                 className={({ isActive }) =>
                   cn(
-                    "rounded px-3 py-1.5 text-[13.5px] transition-colors",
+                    "rounded px-3 py-1.5 text-sm transition-colors",
                     // Weight as well as colour: "current" must not be carried by hue alone.
                     isActive
                       ? "bg-hover font-medium text-fg"
@@ -130,7 +130,7 @@ export default function App() {
             <Route
               path="*"
               element={
-                <section className="mx-auto w-full max-w-[1200px] px-4 py-20 sm:px-6">
+                <section className="shell py-12">
                   <h1 className="text-title">Page not found</h1>
                   <p className="mt-3 max-w-[60ch] text-fg-muted">
                     That route does not exist. Try the navigation above.
@@ -143,7 +143,7 @@ export default function App() {
       </main>
 
       <footer className="mt-auto border-t border-line">
-        <div className="mx-auto flex w-full max-w-[1200px] flex-wrap justify-between gap-3 px-4 py-6 text-[12.5px] text-fg-faint sm:px-6">
+        <div className="shell flex flex-wrap justify-between gap-3 py-6 text-xs text-fg-faint">
           <span>TrustChain — decentralized identity, on-chain RBAC, NFT asset ownership.</span>
           {/*
             No second network badge here. Each one polls /network on its own timer, so a

@@ -44,7 +44,8 @@
     "test": "turbo run test",
     "test:tools": "vitest run",
     "typecheck": "turbo run typecheck",
-    "e2e:install": "playwright install --with-deps chromium"
+    "e2e:install": "playwright install --with-deps chromium",
+    "design:check": "node tools/apply-type-scale.mjs --check"
   },
   "comments": {
     "overrides": "Patched transitive dependencies pulled in by the Hardhat 2 toolchain. npm's own fix for each of these is a major upgrade to Hardhat 3, which is a config-format rewrite we are not taking mid-build. Each pin below stays inside the dependant's expected major, so the toolchain API is unchanged. Revisit when migrating to Hardhat 3."

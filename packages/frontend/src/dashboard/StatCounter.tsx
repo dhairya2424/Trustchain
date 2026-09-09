@@ -94,7 +94,7 @@ export function StatCounter({ value, label, unavailable, className }: StatCounte
       data-value={value}
     >
       {unavailable ? (
-        <p className="text-[22px] font-semibold text-fg-faint" title={unavailable}>
+        <p className="text-xl font-semibold text-fg-faint" title={unavailable}>
           —
         </p>
       ) : (
@@ -104,11 +104,9 @@ export function StatCounter({ value, label, unavailable, className }: StatCounte
         </p>
       )}
 
-      <p className="mt-2 text-[12px] uppercase tracking-[0.1em] text-fg-faint">{label}</p>
+      <p className="mt-2 eyebrow">{label}</p>
 
-      {unavailable && (
-        <p className="mt-1 text-[11.5px] leading-snug text-fg-faint">{unavailable}</p>
-      )}
+      {unavailable && <p className="mt-1 text-2xs leading-snug text-fg-faint">{unavailable}</p>}
     </div>
   );
 }

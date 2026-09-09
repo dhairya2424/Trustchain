@@ -41,8 +41,8 @@ export function EmptyState({ illustration, title, body, action, className }: Emp
       <EmptyArt kind={illustration} reduced={motion.reduced} />
 
       <div className="max-w-[44ch] space-y-1.5">
-        <p className="text-[15px] font-medium text-fg">{title}</p>
-        <p className="text-[13.5px] leading-relaxed text-fg-muted">{body}</p>
+        <p className="text-base font-medium text-fg">{title}</p>
+        <p className="text-sm leading-relaxed text-fg-muted">{body}</p>
       </div>
 
       {action}

@@ -170,14 +170,14 @@ function ToastViewport({
             <ToastIcon status={toast.status} />
 
             <div className="min-w-0 flex-1">
-              <p className="text-[13.5px] font-medium text-fg">{toast.title}</p>
+              <p className="text-sm font-medium text-fg">{toast.title}</p>
               {toast.detail && (
-                <p className="mt-0.5 text-[12.5px] leading-snug text-fg-muted [overflow-wrap:anywhere]">
+                <p className="mt-0.5 text-xs leading-snug text-fg-muted [overflow-wrap:anywhere]">
                   {toast.detail}
                 </p>
               )}
               {toast.reference && (
-                <p className="mt-1 font-mono text-[11.5px] text-fg-faint [overflow-wrap:anywhere]">
+                <p className="mt-1 font-mono text-2xs text-fg-faint [overflow-wrap:anywhere]">
                   {toast.reference}
                 </p>
               )}

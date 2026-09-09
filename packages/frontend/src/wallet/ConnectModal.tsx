@@ -92,7 +92,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="connect-modal" data-phase={phase}>
-        <DialogTitle className="text-[17px] font-semibold tracking-tight">
+        <DialogTitle className="text-lg font-semibold tracking-tight">
           {phase === "connected" ? "Wallet connected" : "Connect a wallet"}
         </DialogTitle>
 
@@ -109,7 +109,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
 
         {phase === "choosing" && (
           <>
-            <DialogDescription className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
+            <DialogDescription className="mt-1.5 text-sm leading-relaxed text-fg-muted">
               Your wallet is your identity here. TrustChain never sees your keys — you sign, we
               verify.
             </DialogDescription>
@@ -126,7 +126,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
                     type="button"
                     onClick={() => onPick(connector)}
                     data-testid={`wallet-option-${connector.id}`}
-                    className="group flex min-h-14 w-full items-center justify-between gap-3 rounded border border-line bg-base px-4 text-[14px] font-medium text-fg transition-colors hover:border-line-strong hover:bg-hover"
+                    className="group flex min-h-14 w-full items-center justify-between gap-3 rounded border border-line bg-base px-4 text-base font-medium text-fg transition-colors hover:border-line-strong hover:bg-hover"
                   >
                     {connectorLabel(connector)}
                     <ArrowRight
@@ -140,7 +140,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
 
             {status === "error" && error && (
               <p
-                className="mt-4 rounded border border-revoked/40 bg-revoked/8 px-3 py-2.5 text-[13px] text-revoked [overflow-wrap:anywhere]"
+                className="mt-4 rounded border border-revoked/40 bg-revoked/8 px-3 py-2.5 text-sm text-revoked [overflow-wrap:anywhere]"
                 data-testid="connect-error"
               >
                 {/*
@@ -160,7 +160,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
             data-testid="connect-pending"
           >
             <PulseRings />
-            <p className="text-[14px] text-fg-muted">
+            <p className="text-base text-fg-muted">
               Approve the connection in{" "}
               <strong className="font-medium text-fg">
                 {pendingConnector ? connectorLabel(pendingConnector) : "your wallet"}
@@ -181,7 +181,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
               <CheckmarkDraw />
               <ConfettiBurst />
             </span>
-            <p className="text-[15px] font-medium text-verified">You&rsquo;re in.</p>
+            <p className="text-base font-medium text-verified">You&rsquo;re in.</p>
           </div>
         )}
       </DialogContent>

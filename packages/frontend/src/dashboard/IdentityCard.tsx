@@ -79,7 +79,7 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
   return (
     <div className={cn("[perspective:1200px]", className)}>
       <fm.div
-        className="rounded-lg border border-line bg-surface p-6"
+        className="panel p-6"
         style={interactive ? { rotateX, rotateY, transformStyle: "preserve-3d" } : undefined}
         onPointerMove={onPointerMove}
         onPointerLeave={reset}
@@ -88,19 +88,17 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
       >
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
-            <p className="text-[11.5px] uppercase tracking-[0.12em] text-fg-faint">
-              Decentralized identifier
-            </p>
+            <p className="eyebrow">Decentralized identifier</p>
 
             {session.did ? (
               <p
-                className="mt-2 break-all font-mono text-[13px] leading-relaxed text-fg"
+                className="mt-2 break-all font-mono text-sm leading-relaxed text-fg"
                 data-testid="identity-did"
               >
                 {session.did}
               </p>
             ) : (
-              <p className="mt-2 text-[13.5px] text-fg-muted" data-testid="identity-no-did">
+              <p className="mt-2 text-sm text-fg-muted" data-testid="identity-no-did">
                 No DID is registered for this address yet. One is anchored on-chain the first time
                 an identity is created for you.
               </p>
@@ -108,9 +106,9 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
 
             <dl className="mt-5 space-y-3">
               <div>
-                <dt className="text-[11.5px] uppercase tracking-[0.12em] text-fg-faint">Wallet</dt>
+                <dt className="eyebrow">Wallet</dt>
                 <dd
-                  className="mt-1 font-mono text-[13px] tabular text-fg-muted"
+                  className="mt-1 font-mono text-sm tabular text-fg-muted"
                   title={session.address}
                 >
                   {truncateAddress(session.address)}
@@ -118,22 +116,20 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
               </div>
 
               <div>
-                <dt className="text-[11.5px] uppercase tracking-[0.12em] text-fg-faint">
-                  Roles, read from the chain
-                </dt>
+                <dt className="eyebrow">Roles, read from the chain</dt>
                 <dd className="mt-2 flex flex-wrap gap-1.5">
                   {session.roles.length > 0 ? (
                     session.roles.map((role) => (
                       <span
                         key={role}
-                        className="rounded border border-line-strong px-2 py-0.5 font-mono text-[11.5px] text-fg-muted"
+                        className="rounded border border-line-strong px-2 py-0.5 font-mono text-2xs text-fg-muted"
                         data-testid="identity-role"
                       >
                         {role}
                       </span>
                     ))
                   ) : (
-                    <span className="text-[13px] text-fg-muted">
+                    <span className="text-sm text-fg-muted">
                       No roles granted. You can read, but not change anything.
                     </span>
                   )}
@@ -171,7 +167,7 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
           <Status tone={session.did ? "verified" : "neutral"}>
             {session.did ? "Identity anchored" : "No identity"}
           </Status>
-          <span className="text-[12px] text-fg-faint">
+          <span className="text-xs text-fg-faint">
             {session.did
               ? "This identifier exists on-chain and anyone can resolve it."
               : "Nothing is anchored on-chain for this wallet."}

@@ -40,7 +40,7 @@ export function AssetGrid({ mints, isLoading, blocked }: AssetGridProps) {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="assets-loading">
         {[0, 1, 2].map((card) => (
-          <div key={card} className="rounded-lg border border-line bg-surface p-4">
+          <div key={card} className="panel p-4">
             <Skeleton className="aspect-4/3 w-full" />
             <Skeleton className="mt-4 h-3 w-24" />
             <Skeleton className="mt-2 h-3 w-32" />
@@ -65,7 +65,7 @@ export function AssetGrid({ mints, isLoading, blocked }: AssetGridProps) {
       {mints.map((mint, index) => (
         <fm.article
           key={mint.entryId}
-          className="group rounded-lg border border-line bg-surface p-4 transition-colors hover:border-line-strong"
+          className="group panel p-4 transition-colors hover:border-line-strong"
           initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={motion.transition("base", motion.stagger(index, 0.07))}
@@ -77,9 +77,9 @@ export function AssetGrid({ mints, isLoading, blocked }: AssetGridProps) {
           <AssetArtwork />
 
           <div className="mt-4 space-y-1.5">
-            <p className="font-mono text-[12px] text-fg-faint">{truncateAddress(mint.refHash)}</p>
-            <p className="text-[14px] font-medium">Minted asset</p>
-            <p className="font-mono text-[11.5px] text-fg-faint">
+            <p className="font-mono text-xs text-fg-faint">{truncateAddress(mint.refHash)}</p>
+            <p className="text-base font-medium">Minted asset</p>
+            <p className="font-mono text-2xs text-fg-faint">
               block {mint.blockNumber} · {truncateAddress(mint.transactionHash)}
             </p>
           </div>
@@ -105,7 +105,7 @@ function AssetArtwork({ cid }: { cid?: string }) {
         className="grid aspect-4/3 w-full place-items-center rounded border border-dashed border-line bg-base px-4 text-center"
         data-testid="asset-artwork-absent"
       >
-        <p className="text-[11.5px] leading-snug text-fg-faint">
+        <p className="text-2xs leading-snug text-fg-faint">
           Metadata pending
           <br />
           the asset indexer

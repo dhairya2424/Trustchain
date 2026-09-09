@@ -72,10 +72,10 @@ export function ActivityFeed({ entries, isLoading, error }: ActivityFeedProps) {
             className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line px-5 py-4 last:border-b-0"
             data-testid="activity-row"
           >
-            <span className="text-[14px] font-medium text-fg">{actionLabel(event.action)}</span>
+            <span className="text-base font-medium text-fg">{actionLabel(event.action)}</span>
 
             <span
-              className="font-mono text-[12px] text-fg-muted"
+              className="font-mono text-xs text-fg-muted"
               title={event.actor ?? "no actor recorded"}
             >
               by {event.actor ? truncateAddress(event.actor) : "unattributed"}
@@ -85,19 +85,19 @@ export function ActivityFeed({ entries, isLoading, error }: ActivityFeedProps) {
               // The distinction the audit trail exists to preserve: who asked, and who paid
               // the gas to submit it. `via` is neither — it is the system contract that
               // recorded the entry.
-              <span className="font-mono text-[12px] text-fg-faint" title={event.executor}>
+              <span className="font-mono text-xs text-fg-faint" title={event.executor}>
                 submitted by {truncateAddress(event.executor)}
               </span>
             )}
 
             <time
-              className="ml-auto font-mono text-[12px] tabular text-fg-faint"
+              className="ml-auto font-mono text-xs tabular text-fg-faint"
               dateTime={event.occurredAt}
             >
               {formatWhen(event.occurredAt)}
             </time>
 
-            <span className="w-full font-mono text-[11.5px] text-fg-faint">
+            <span className="w-full font-mono text-2xs text-fg-faint">
               block {event.blockNumber} · {truncateAddress(event.transactionHash)}
             </span>
           </fm.li>
@@ -114,7 +114,7 @@ function ActivityError({ error }: { error: ApiError }) {
     return (
       <div className="px-5 py-10 text-center" data-testid="activity-forbidden">
         <Status tone="neutral">Permission required</Status>
-        <p className="mx-auto mt-3 max-w-[46ch] text-[13.5px] leading-relaxed text-fg-muted">
+        <p className="mx-auto mt-3 max-w-[46ch] text-sm leading-relaxed text-fg-muted">
           Reading the audit trail needs the <span className="font-mono">VIEW_AUDIT</span>{" "}
           permission, which your roles do not currently include. The records exist; this account is
           not authorized to read them.
@@ -127,7 +127,7 @@ function ActivityError({ error }: { error: ApiError }) {
     return (
       <div className="px-5 py-10 text-center" data-testid="activity-unavailable">
         <Status tone="fallback">No network</Status>
-        <p className="mx-auto mt-3 max-w-[46ch] text-[13.5px] leading-relaxed text-fg-muted">
+        <p className="mx-auto mt-3 max-w-[46ch] text-sm leading-relaxed text-fg-muted">
           No blockchain network is currently usable, so there is nothing to read from. That is an
           availability problem, not an empty history.
         </p>
@@ -138,7 +138,7 @@ function ActivityError({ error }: { error: ApiError }) {
   return (
     <div className="px-5 py-10 text-center" data-testid="activity-error">
       <Status tone="revoked">Could not load</Status>
-      <p className="mx-auto mt-3 max-w-[46ch] text-[13.5px] leading-relaxed text-fg-muted">
+      <p className="mx-auto mt-3 max-w-[46ch] text-sm leading-relaxed text-fg-muted">
         {error.message}
       </p>
     </div>

@@ -100,7 +100,7 @@ export function VerdictBanner({ verdict }: { verdict: Verdict }) {
         {verdict.title}
       </h2>
 
-      <p className="mx-auto mt-4 max-w-[58ch] text-[14px] leading-relaxed text-fg-muted">
+      <p className="mx-auto mt-4 max-w-[58ch] text-base leading-relaxed text-fg-muted">
         {verdict.detail}
       </p>
     </fm.section>

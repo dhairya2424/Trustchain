@@ -98,7 +98,7 @@ export function CredentialBadges({ issued, revoked, isLoading, blocked }: Creden
 
               <span
                 className={[
-                  "text-[11px] font-medium uppercase tracking-[0.08em]",
+                  "text-2xs font-medium uppercase tracking-label",
                   isRevoked ? "text-revoked" : "text-verified",
                 ].join(" ")}
               >
@@ -106,13 +106,11 @@ export function CredentialBadges({ issued, revoked, isLoading, blocked }: Creden
               </span>
             </span>
 
-            <span className="font-mono text-[12px] text-fg-muted" title={credential.refHash}>
+            <span className="font-mono text-xs text-fg-muted" title={credential.refHash}>
               {truncateAddress(credential.refHash)}
             </span>
 
-            <span className="font-mono text-[11px] text-fg-faint">
-              block {credential.blockNumber}
-            </span>
+            <span className="font-mono text-2xs text-fg-faint">block {credential.blockNumber}</span>
           </fm.div>
         );
       })}

@@ -45,8 +45,8 @@ export function GridPatternCard({ children, className, ...props }: GridPatternCa
   return (
     <fm.div
       className={cn(
-        "w-full overflow-hidden rounded-lg border border-line bg-surface",
-        "transition-colors duration-200 hover:border-line-strong",
+        "w-full overflow-hidden panel",
+        "transition-colors hover:border-line-strong",
         className,
       )}
       {...props}

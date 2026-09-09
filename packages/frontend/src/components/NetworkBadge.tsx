@@ -135,7 +135,7 @@ export function NetworkBadge({ variant = "compact", className }: NetworkBadgePro
         misrepresentation this component exists to prevent. `variant` may adjust how loudly
         it is set, never whether it is said.
       */}
-      <span className={cn("text-fg-muted", variant === "full" ? "text-[13px]" : "text-[12px]")}>
+      <span className={cn("text-fg-muted", variant === "full" ? "text-sm" : "text-xs")}>
         {network.verifiabilityLabel}
       </span>
 
@@ -152,7 +152,7 @@ export function NetworkBadge({ variant = "compact", className }: NetworkBadgePro
          * it again without words. This sentence adds the *reason*, which belongs on the
          * pages that have space to explain rather than in a 40px header.
          */
-        <span className="text-[12px] text-fallback" data-testid="fallback-notice">
+        <span className="text-xs text-fallback" data-testid="fallback-notice">
           Fallback — Polygon Amoy unavailable; records are not publicly verifiable
         </span>
       )}

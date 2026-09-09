@@ -49,14 +49,69 @@
   --font-mono:
     "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
 
-  /* A small, deliberate scale. Display sizes are fluid; body text is not, because
-     body text that changes size with the viewport is harder to read, not easier. */
-  --text-display: clamp(2.5rem, 6vw, 4.25rem);
+  /*
+   * The type scale.
+   *
+   * Six steps, and the discipline is that there is no seventh. This replaced thirteen
+   * ad-hoc `text-[13px]`-style values that had drifted into near-duplicate pairs — 13 and
+   * 13.5, 12 and 12.5, 11 and 11.5 — differences too small to read as intentional and too
+   * large to be free. A reader cannot perceive half a pixel as hierarchy; they perceive it
+   * as sloppiness, without being able to say why.
+   *
+   * Each step is a ratio apart (roughly 1.12–1.2), which is what makes two adjacent levels
+   * distinguishable at a glance. Body sits at 15px because that is the smallest size that
+   * stays comfortable for a paragraph on a dark ground; everything below it is for labels
+   * and metadata, which are scanned rather than read.
+   *
+   * Line heights ride with the size: tight for display, generous for body. Setting them
+   * together is the point — a size without its leading is half a decision, and the other
+   * half ends up scattered across components.
+   */
+  --text-2xs: 0.6875rem; /* 11px  — eyebrows, micro labels */
+  --text-2xs--line-height: 1.45;
+  --text-xs: 0.775rem; /* 12.4px — metadata, captions, hashes */
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.85rem; /* 13.6px — secondary body, dense UI */
+  --text-sm--line-height: 1.6;
+  --text-base: 0.9375rem; /* 15px  — body */
+  --text-base--line-height: 1.65;
+  --text-lg: 1.0625rem; /* 17px  — card and panel titles */
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.375rem; /* 22px  — sub-section titles */
+  --text-xl--line-height: 1.3;
+
+  /* Display sizes are fluid; body text is not, because body text that changes size with
+     the viewport is harder to read, not easier. */
   --text-title: clamp(1.5rem, 3vw, 2.125rem);
+  --text-title--line-height: 1.15;
+  --text-display: clamp(2.5rem, 6vw, 4.25rem);
+  --text-display--line-height: 1.05;
+
+  /*
+   * One tracking value for uppercase labels.
+   *
+   * There were four (0.08, 0.1, 0.12, 0.14em) applied to the same idiom, which is the kind
+   * of inconsistency that reads as a wobble rather than a choice. Uppercase text needs
+   * extra letter-spacing to stay legible; how much is a decision to make once.
+   */
+  --tracking-label: 0.1em;
 
   --radius-sm: 3px;
   --radius: 5px;
   --radius-lg: 8px;
+
+  /*
+   * One content width.
+   *
+   * Pages previously used 1200px, 1400px and 900px, so the left edge of the content moved
+   * as you navigated between them — the most visible alignment failure a multi-page app
+   * can have, and one nobody reports because it registers as unease rather than a bug.
+   * The admin console keeps a wider variant because it carries a rail plus a table, which
+   * is a genuine difference in what the page holds.
+   */
+  --container-content: 1200px;
+  --container-wide: 1400px;
+  --container-reading: 900px;
 }
 
 @layer base {
@@ -88,6 +143,38 @@
     line-height: 1.15;
     font-weight: 600;
     margin: 0;
+
+    /*
+     * Balanced line breaks.
+     *
+     * The browser distributes a heading's words evenly across its lines rather than filling
+     * greedily and leaving one word stranded on the last. It is the difference between a
+     * heading that looks set and one that looks wrapped, costs nothing, and degrades to the
+     * old behaviour where unsupported.
+     */
+    text-wrap: balance;
+  }
+
+  p {
+    /*
+     * Avoids orphans in body copy — a single word alone on the final line. Cheaper than
+     * `balance` and appropriate for longer text, where balancing every line would be both
+     * slow and unnecessary.
+     */
+    text-wrap: pretty;
+  }
+
+  /*
+   * Anything the skip link or an in-page anchor targets must clear the sticky header.
+   *
+   * Without this, "Skip to content" scrolls the target to y=0 — directly underneath the
+   * header that is pinned there — so a keyboard user who takes the shortcut lands on
+   * content they cannot see. The bug is invisible to anyone using a mouse, which is exactly
+   * why it survives review.
+   */
+  :target,
+  #main {
+    scroll-margin-top: 5.5rem;
   }
 
   /*
@@ -111,6 +198,86 @@
 }
 
 @layer components {
+  /*
+   * The content column.
+   *
+   * One class, three widths, so the left edge of the content lands in the same place on
+   * every page. Previously each route declared its own `mx-auto w-full max-w-[…]` string
+   * and they disagreed — 1200, 1400, 900 — which meant the page visibly stepped sideways as
+   * you navigated. That is the most noticeable alignment failure a multi-page app can have
+   * and the least likely to be reported, because it registers as unease rather than a bug.
+   *
+   * The horizontal padding is shared by all three, which is the half that actually matters
+   * on a phone: below the `sm` breakpoint every page has an identical gutter.
+   */
+  .shell {
+    margin-inline: auto;
+    width: 100%;
+    max-width: var(--container-content);
+    padding-inline: --spacing(4);
+  }
+
+  @media (width >= 40rem) {
+    .shell {
+      padding-inline: --spacing(6);
+    }
+  }
+
+  /* The admin console: a rail plus a table is a genuinely wider page. */
+  .shell-wide {
+    max-width: var(--container-wide);
+  }
+
+  /* The verifier: one column of prose and a verdict, held to a readable measure. */
+  .shell-reading {
+    max-width: var(--container-reading);
+  }
+
+  /*
+   * The panel: a bordered rectangle on a raised ground.
+   *
+   * This exact triple — `rounded-lg border border-line bg-surface` — appeared inline in
+   * twenty-one places. Written out each time it is not a system, it is a habit: the moment
+   * one of them gains a different radius or a slightly different border the interface
+   * starts to look assembled rather than designed, and nothing flags it.
+   *
+   * Naming it also makes the exceptions legible. A panel that deliberately differs now says
+   * so by not using this class.
+   */
+  .panel {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-line);
+    background: var(--color-surface);
+  }
+
+  /* A panel that is the current or emphasised one. */
+  .panel-strong {
+    border-color: var(--color-line-strong);
+  }
+
+  /*
+   * The uppercase label above a section or beside a value.
+   *
+   * Size, weight, colour and tracking travel together because they are one decision. Four
+   * different tracking values were in use for this idiom, which reads as a wobble.
+   */
+  .eyebrow {
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--color-fg-faint);
+  }
+
+  /* The same idiom where it heads a section rather than labelling a field. */
+  .section-label {
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    color: var(--color-fg-muted);
+  }
+
   /*
    * A panel is a bordered rectangle on a slightly raised ground. That is the entire
    * elevation system. There is no blur here: on /admin and /verify there is nothing behind

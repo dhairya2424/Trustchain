@@ -37,7 +37,7 @@ import { buildTimeline, classifyInput, decideVerdict, type VerifyResponse } from
 
 type Phase = "idle" | "verifying" | "done" | "error";
 
-const SHELL = "mx-auto w-full max-w-[900px] px-4 sm:px-6";
+const SHELL = "shell shell-reading";
 
 export function Verify() {
   const motion = useMotion();
@@ -152,9 +152,7 @@ export function Verify() {
       <header className="border-b border-line pb-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-fg-faint">
-              Public verifier
-            </p>
+            <p className="font-mono eyebrow">Public verifier</p>
             <h1 id="verify-title" className="mt-2 text-title">
               Verify a credential
             </h1>
@@ -162,7 +160,7 @@ export function Verify() {
           <NetworkBadge variant="full" />
         </div>
 
-        <p className="mt-4 max-w-[68ch] text-[14px] leading-relaxed text-fg-muted">
+        <p className="mt-4 max-w-[68ch] text-base leading-relaxed text-fg-muted">
           No account, no wallet, no sign-in. A credential that only its issuer can check is not
           verifiable in any useful sense — so this page is open to anyone, and the result comes from
           the chain rather than from us.
@@ -177,16 +175,14 @@ export function Verify() {
         }}
       >
         <label className="block">
-          <span className="mb-2 block text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-            Credential hash or JWT
-          </span>
+          <span className="mb-2 block eyebrow">Credential hash or JWT</span>
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}
             rows={3}
             spellCheck={false}
             placeholder="0x… or eyJhbGciOi…"
-            className="w-full resize-y rounded border border-line bg-base px-3 py-2.5 font-mono text-[13px] leading-relaxed"
+            className="w-full resize-y rounded border border-line bg-base px-3 py-2.5 font-mono text-sm leading-relaxed"
             data-testid="verify-input"
           />
         </label>
@@ -212,7 +208,7 @@ export function Verify() {
             </Button>
           )}
 
-          <span className="text-[12px] text-fg-faint">
+          <span className="text-xs text-fg-faint">
             Pasting the full credential checks its signature too; a hash alone checks only the
             chain.
           </span>
@@ -233,25 +229,16 @@ export function Verify() {
       )}
 
       {phase === "error" && error && (
-        <div
-          className="mt-6 rounded-lg border border-line bg-surface px-5 py-6"
-          data-testid="verify-error"
-          role="status"
-        >
+        <div className="mt-6 panel px-5 py-6" data-testid="verify-error" role="status">
           <Status tone="fallback">Could not check</Status>
-          <p className="mt-3 max-w-[62ch] text-[13.5px] leading-relaxed text-fg-muted">{error}</p>
+          <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-fg-muted">{error}</p>
         </div>
       )}
 
       {phase === "verifying" && (
-        <div
-          className="relative mt-8 rounded-lg border border-line bg-surface px-6 py-14 text-center"
-          data-testid="verify-scanning"
-        >
+        <div className="relative mt-8 panel px-6 py-14 text-center" data-testid="verify-scanning">
           <ScanBeam active />
-          <p className="relative text-[14px] text-fg-muted">
-            Checking the signature and the chain…
-          </p>
+          <p className="relative text-base text-fg-muted">Checking the signature and the chain…</p>
         </div>
       )}
 
@@ -265,21 +252,17 @@ export function Verify() {
           <VerdictBanner verdict={verdict} />
 
           <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)]">
-            <div className="rounded-lg border border-line bg-surface p-6">
-              <h3 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted">
-                Provenance
-              </h3>
+            <div className="panel p-6">
+              <h3 className="section-label">Provenance</h3>
               <div className="mt-5">
                 <ProvenanceTimeline nodes={timeline} />
               </div>
             </div>
 
-            <div className="rounded-lg border border-line bg-surface p-6">
-              <h3 className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted">
-                Proof
-              </h3>
+            <div className="panel p-6">
+              <h3 className="section-label">Proof</h3>
 
-              <dl className="mt-5 space-y-3.5 text-[12.5px]">
+              <dl className="mt-5 space-y-3.5 text-xs">
                 <Fact term="Credential hash" mono>
                   {response.credentialHash}
                 </Fact>
@@ -323,7 +306,7 @@ export function Verify() {
                   )}
                   {copied ? "Link copied" : "Share verification"}
                 </Button>
-                <p className="mt-2 text-[11.5px] leading-snug text-fg-faint">
+                <p className="mt-2 text-2xs leading-snug text-fg-faint">
                   A public, read-only link. Opening it re-runs this check against the chain — it
                   carries the result of nothing, only the question.
                 </p>
@@ -347,12 +330,9 @@ function Fact({
 }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">{term}</dt>
+      <dt className="eyebrow">{term}</dt>
       <dd
-        className={cn(
-          "mt-1 text-fg-muted [overflow-wrap:anywhere]",
-          mono && "font-mono text-[12px]",
-        )}
+        className={cn("mt-1 text-fg-muted [overflow-wrap:anywhere]", mono && "font-mono text-xs")}
       >
         {children}
       </dd>

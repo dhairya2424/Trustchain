@@ -76,8 +76,8 @@ export function RoleManager() {
 
   return (
     <div className="min-w-0">
-      <h2 className="text-[15px] font-semibold">Roles</h2>
-      <p className="mt-1 max-w-[64ch] text-[13px] leading-relaxed text-fg-muted">
+      <h2 className="text-base font-semibold">Roles</h2>
+      <p className="mt-1 max-w-[64ch] text-sm leading-relaxed text-fg-muted">
         Authorization lives in a contract, not a database. Every grant and revocation is itself an
         on-chain event signed by the administrator who requested it, which is what stops permissions
         being edited behind the audit trail&rsquo;s back.
@@ -91,15 +91,13 @@ export function RoleManager() {
         }}
       >
         <label className="min-w-0 flex-1">
-          <span className="mb-1.5 block text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-            Look up an address
-          </span>
+          <span className="mb-1.5 block eyebrow">Look up an address</span>
           <input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="0x…"
             spellCheck={false}
-            className="w-full rounded border border-line bg-base px-3 py-2 font-mono text-[13px]"
+            className="w-full rounded border border-line bg-base px-3 py-2 font-mono text-sm"
             data-testid="role-lookup-input"
           />
         </label>
@@ -110,7 +108,7 @@ export function RoleManager() {
       </form>
 
       {lookup.isError && (
-        <p className="mt-4 text-[13px] text-revoked" data-testid="role-lookup-error">
+        <p className="mt-4 text-sm text-revoked" data-testid="role-lookup-error">
           {lookup.error.status === 400
             ? "That does not look like an address."
             : lookup.error.message}
@@ -122,8 +120,8 @@ export function RoleManager() {
       )}
 
       {!lookup.data && (
-        <div className="mt-6 overflow-hidden rounded-lg border border-line bg-surface">
-          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-4 border-b border-line px-5 py-2.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">
+        <div className="mt-6 overflow-hidden panel">
+          <div className="grid grid-cols-[7rem_minmax(0,1fr)] gap-4 border-b border-line px-5 py-2.5 eyebrow">
             <span>Role</span>
             <span>Authority</span>
           </div>
@@ -133,8 +131,8 @@ export function RoleManager() {
               className="grid grid-cols-[7rem_minmax(0,1fr)] gap-4 border-b border-line px-5 py-4 last:border-b-0"
               data-testid="role-reference"
             >
-              <span className="font-mono text-[12.5px] text-fg">{role.id}</span>
-              <span className="text-[13px] leading-relaxed text-fg-muted">{role.summary}</span>
+              <span className="font-mono text-xs text-fg">{role.id}</span>
+              <span className="text-sm leading-relaxed text-fg-muted">{role.summary}</span>
             </div>
           ))}
         </div>
@@ -240,13 +238,13 @@ function SubjectPanel({
     <div className="mt-6" data-testid="role-subject">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-t-lg border border-line bg-surface px-5 py-4">
         <div className="min-w-0">
-          <p className="font-mono text-[13px] text-fg" title={subject.address}>
+          <p className="font-mono text-sm text-fg" title={subject.address}>
             {truncateAddress(subject.address)}
           </p>
           {subject.did ? (
-            <p className="mt-1 break-all font-mono text-[11.5px] text-fg-faint">{subject.did}</p>
+            <p className="mt-1 break-all font-mono text-2xs text-fg-faint">{subject.did}</p>
           ) : (
-            <p className="mt-1 text-[12px] text-fallback" data-testid="subject-no-did">
+            <p className="mt-1 text-xs text-fallback" data-testid="subject-no-did">
               No DID is registered for this address, so it cannot hold a role.
             </p>
           )}
@@ -272,12 +270,12 @@ function SubjectPanel({
               data-held={has ? "true" : "false"}
             >
               <div className="min-w-0">
-                <span className="font-mono text-[12.5px] text-fg">{role.id}</span>
-                <p className="mt-0.5 max-w-[54ch] text-[12.5px] leading-relaxed text-fg-muted">
+                <span className="font-mono text-xs text-fg">{role.id}</span>
+                <p className="mt-0.5 max-w-[54ch] text-xs leading-relaxed text-fg-muted">
                   {role.summary}
                 </p>
                 {selfLockout && (
-                  <p className="mt-1 text-[12px] text-fallback" data-testid="self-lockout-warning">
+                  <p className="mt-1 text-xs text-fallback" data-testid="self-lockout-warning">
                     Revoking your own ADMIN cannot be undone by you.
                   </p>
                 )}
@@ -316,7 +314,7 @@ function SubjectPanel({
       </div>
 
       {!canManage && (
-        <p className="mt-3 text-[12.5px] text-fg-faint" data-testid="cannot-manage">
+        <p className="mt-3 text-xs text-fg-faint" data-testid="cannot-manage">
           You hold no ADMIN role, so these controls are inert. They are shown rather than hidden
           because knowing a capability exists and is denied to you is more useful than a console
           that quietly omits it — and the API and contract would both refuse the change regardless.

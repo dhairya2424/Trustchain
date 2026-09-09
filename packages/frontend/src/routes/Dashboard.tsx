@@ -31,7 +31,7 @@ import { ConnectButton } from "@/wallet/ConnectButton";
  * empty page pretending nothing has happened.
  */
 
-const SHELL = "mx-auto w-full max-w-[1200px] px-4 sm:px-6";
+const SHELL = "shell";
 
 export function Dashboard() {
   const motion = useMotion();
@@ -50,13 +50,11 @@ export function Dashboard() {
 
   if (session.isError) {
     return (
-      <section className={`${SHELL} py-16`}>
+      <section className={`${SHELL} py-12`}>
         <h1 className="text-title">Dashboard</h1>
-        <div className="mt-6 rounded-lg border border-line bg-surface px-6 py-10 text-center">
+        <div className="mt-6 panel px-6 py-10 text-center">
           <Status tone="revoked">Cannot load your session</Status>
-          <p className="mx-auto mt-3 max-w-[46ch] text-[13.5px] text-fg-muted">
-            {session.error.message}
-          </p>
+          <p className="mx-auto mt-3 max-w-[46ch] text-sm text-fg-muted">{session.error.message}</p>
         </div>
       </section>
     );
@@ -81,9 +79,7 @@ export function Dashboard() {
       >
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-fg-faint">
-              Your cockpit
-            </p>
+            <p className="font-mono eyebrow">Your cockpit</p>
             <h1 id="dash-title" className="mt-2 text-title">
               Dashboard
             </h1>
@@ -116,10 +112,7 @@ export function Dashboard() {
         <IdentityCard session={me} />
 
         <section aria-labelledby="credentials-title" className="min-w-0">
-          <h2
-            id="credentials-title"
-            className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted"
-          >
+          <h2 id="credentials-title" className="section-label">
             My credentials
           </h2>
           <div className="mt-4">
@@ -134,10 +127,7 @@ export function Dashboard() {
       </div>
 
       <section aria-labelledby="assets-title" className="mt-12">
-        <h2
-          id="assets-title"
-          className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted"
-        >
+        <h2 id="assets-title" className="section-label">
           My assets
         </h2>
         <div className="mt-4">
@@ -147,20 +137,15 @@ export function Dashboard() {
 
       <section aria-labelledby="activity-title" className="mt-12">
         <div className="flex items-baseline justify-between gap-4">
-          <h2
-            id="activity-title"
-            className="text-[13px] font-semibold uppercase tracking-[0.1em] text-fg-muted"
-          >
+          <h2 id="activity-title" className="section-label">
             Activity
           </h2>
           {activity.data?.source && (
-            <span className="font-mono text-[11.5px] text-fg-faint">
-              source: {activity.data.source}
-            </span>
+            <span className="font-mono text-2xs text-fg-faint">source: {activity.data.source}</span>
           )}
         </div>
 
-        <div className="mt-4 overflow-hidden rounded-lg border border-line bg-surface">
+        <div className="mt-4 overflow-hidden panel">
           <ActivityFeed entries={entries} isLoading={activity.isLoading} error={auditError} />
         </div>
       </section>
@@ -244,11 +229,11 @@ function partition(entries: AuditEntry[] | undefined) {
 
 function PanelBlocked({ error }: { error: ApiError }) {
   return (
-    <div className="rounded-lg border border-line bg-surface px-5 py-8 text-center">
+    <div className="panel px-5 py-8 text-center">
       <Status tone={error.isForbidden ? "neutral" : "fallback"}>
         {error.isForbidden ? "Permission required" : "Unavailable"}
       </Status>
-      <p className="mx-auto mt-3 max-w-[48ch] text-[13px] leading-relaxed text-fg-muted">
+      <p className="mx-auto mt-3 max-w-[48ch] text-sm leading-relaxed text-fg-muted">
         {error.isForbidden
           ? "This panel is derived from the audit trail, which needs the VIEW_AUDIT permission. Rather than show an empty grid that would read as 'you own nothing', it says what is actually missing."
           : "The audit trail could not be read, so this panel has no source. It is not empty — it is unknown, and those are different things."}
@@ -259,15 +244,13 @@ function PanelBlocked({ error }: { error: ApiError }) {
 
 function SignInPrompt() {
   return (
-    <section className={`${SHELL} py-16`} aria-labelledby="dash-title">
-      <p className="font-mono text-[12px] uppercase tracking-[0.14em] text-fg-faint">
-        Your cockpit
-      </p>
+    <section className={`${SHELL} py-12`} aria-labelledby="dash-title">
+      <p className="font-mono eyebrow">Your cockpit</p>
       <h1 id="dash-title" className="mt-2 text-title">
         Dashboard
       </h1>
 
-      <div className="mt-8 rounded-lg border border-line bg-surface" data-testid="signin-prompt">
+      <div className="mt-8 panel" data-testid="signin-prompt">
         <EmptyState
           illustration="credentials"
           title="Sign in to see your identity"
@@ -276,7 +259,7 @@ function SignInPrompt() {
         />
       </div>
 
-      <p className="mt-6 text-center text-[13px] text-fg-faint">
+      <p className="mt-6 text-center text-sm text-fg-faint">
         Verifying a credential needs no account at all —{" "}
         <Button asChild variant="ghost" size="sm" className="px-1 underline">
           <a href="/verify">use the public verify page</a>

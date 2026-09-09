@@ -33,6 +33,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Fails if an ad-hoc pixel font size has crept back in. The type scale erodes one
+      # `text-[13px]` at a time, and each one looks harmless in isolation.
+      - name: Design system
+        run: npm run design:check
+
       - name: Typecheck
         run: npm run typecheck
 

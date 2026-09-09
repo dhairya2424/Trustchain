@@ -60,7 +60,7 @@ const FLOW = [
   },
 ] as const;
 
-const SHELL = "mx-auto w-full max-w-[1200px] px-4 sm:px-6";
+const SHELL = "shell";
 
 export function Landing() {
   const motion = useMotion();
@@ -78,7 +78,7 @@ export function Landing() {
           animate={{ opacity: 1, y: 0 }}
           transition={motion.transition("slow")}
         >
-          <p className="mb-6 inline-flex items-center gap-2.5 border-l border-line-strong pl-3 text-[12px] uppercase tracking-[0.14em] text-fg-faint">
+          <p className="mb-6 inline-flex items-center gap-2.5 border-l border-line-strong pl-3 eyebrow">
             Trust, made verifiable
           </p>
 
@@ -88,7 +88,7 @@ export function Landing() {
             <Typewriter text="Identity. Authority. Ownership. On one ledger." />
           </p>
 
-          <p className="mt-7 max-w-[58ch] text-[15px] leading-relaxed text-fg-muted">
+          <p className="mt-7 max-w-[58ch] text-base leading-relaxed text-fg-muted">
             A centralized IAM dashboard asks you to trust its database. TrustChain replaces that
             promise with a proof anyone can check.
           </p>
@@ -112,20 +112,20 @@ export function Landing() {
         aria-labelledby="pillars-title"
         ref={pillarsRef}
       >
-        <div className="mb-10 flex items-baseline justify-between gap-4 border-b border-line pb-4">
+        <div className="mb-10 flex items-baseline justify-between gap-4 border-b border-line pb-6">
           <h2 id="pillars-title" className="text-title">
             Three guarantees, one ledger
           </h2>
-          <span className="hidden font-mono text-[12px] text-fg-faint sm:inline">001 / 003</span>
+          <span className="hidden font-mono text-xs text-fg-faint sm:inline">001 / 003</span>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
           {PILLARS.map((pillar) => (
             <GridPatternCard key={pillar.key} className="pillar">
               <GridPatternCardBody>
-                <span className="font-mono text-[12px] text-fg-faint">{pillar.index}</span>
-                <h3 className="mt-3 text-[16px] font-semibold">{pillar.title}</h3>
-                <p className="mt-2.5 text-[14px] leading-relaxed text-fg-muted">{pillar.body}</p>
+                <span className="font-mono text-xs text-fg-faint">{pillar.index}</span>
+                <h3 className="mt-3 text-lg font-semibold">{pillar.title}</h3>
+                <p className="mt-2.5 text-base leading-relaxed text-fg-muted">{pillar.body}</p>
               </GridPatternCardBody>
             </GridPatternCard>
           ))}
@@ -133,7 +133,7 @@ export function Landing() {
       </section>
 
       <section className={`${SHELL} relative py-20`} aria-labelledby="flow-title" ref={flowRef}>
-        <div className="mb-10 border-b border-line pb-4">
+        <div className="mb-10 border-b border-line pb-6">
           <h2 id="flow-title" className="text-title">
             What happens when you act
           </h2>
@@ -149,11 +149,11 @@ export function Landing() {
               key={step.n}
               className="flow-row grid gap-x-8 gap-y-2 border-b border-line py-7 sm:grid-cols-[auto_1fr] md:grid-cols-[auto_18rem_1fr]"
             >
-              <span className="font-mono text-[13px] text-fg-faint" aria-hidden="true">
+              <span className="font-mono text-sm text-fg-faint" aria-hidden="true">
                 {step.n}
               </span>
-              <h3 className="text-[15px] font-semibold">{step.title}</h3>
-              <p className="max-w-[62ch] text-[14px] leading-relaxed text-fg-muted">{step.body}</p>
+              <h3 className="text-base font-semibold">{step.title}</h3>
+              <p className="max-w-[62ch] text-base leading-relaxed text-fg-muted">{step.body}</p>
             </li>
           ))}
         </ol>

@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 const statusVariants = cva(
   cn(
     "inline-flex items-center gap-2 rounded-full border px-2.5 py-1",
-    "text-[11px] font-medium uppercase tracking-[0.08em] whitespace-nowrap",
+    "text-2xs font-medium uppercase tracking-label whitespace-nowrap",
   ),
   {
     variants: {

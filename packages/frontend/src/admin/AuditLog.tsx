@@ -86,8 +86,8 @@ export function AuditLog() {
     <div className="min-w-0">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h2 className="text-[15px] font-semibold">Audit log</h2>
-          <p className="mt-1 text-[13px] text-fg-muted">
+          <h2 className="text-base font-semibold">Audit log</h2>
+          <p className="mt-1 text-sm text-fg-muted">
             Every recorded action, with the identity that requested it and the account that
             submitted it.
           </p>
@@ -95,7 +95,7 @@ export function AuditLog() {
 
         <div className="flex items-center gap-3">
           {query.data?.source && (
-            <span className="font-mono text-[11.5px] text-fg-faint" data-testid="audit-source">
+            <span className="font-mono text-2xs text-fg-faint" data-testid="audit-source">
               source: {query.data.source}
             </span>
           )}
@@ -104,7 +104,7 @@ export function AuditLog() {
       </div>
 
       <form
-        className="mt-5 grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-5"
+        className="mt-5 grid gap-3 panel p-4 sm:grid-cols-2 lg:grid-cols-5"
         onSubmit={(event) => {
           event.preventDefault();
           apply();
@@ -180,7 +180,7 @@ export function AuditLog() {
       {query.isError ? (
         <AuditError error={query.error} />
       ) : entries.length === 0 && !query.isLoading ? (
-        <div className="mt-5 rounded-lg border border-line bg-surface">
+        <div className="mt-5 panel">
           <EmptyState
             illustration="activity"
             title="No entries match"
@@ -189,8 +189,8 @@ export function AuditLog() {
         </div>
       ) : (
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface">
-            <div className="grid grid-cols-[7rem_1fr_9rem] gap-4 border-b border-line px-4 py-2.5 text-[11px] uppercase tracking-[0.08em] text-fg-faint">
+          <div className="min-w-0 overflow-hidden panel">
+            <div className="grid grid-cols-[7rem_1fr_9rem] gap-4 border-b border-line px-4 py-2.5 eyebrow">
               <span>Entry</span>
               <span>Action</span>
               <span className="text-right">When</span>
@@ -215,16 +215,16 @@ export function AuditLog() {
                       style={{ height: row.size, transform: `translateY(${row.start}px)` }}
                       data-testid="audit-row"
                     >
-                      <span className="font-mono text-[12px] tabular text-fg-faint">
+                      <span className="font-mono text-xs tabular text-fg-faint">
                         #{entry.entryId}
                       </span>
-                      <span className="min-w-0 truncate text-[13.5px]">
+                      <span className="min-w-0 truncate text-sm">
                         {actionLabel(entry.action)}
-                        <span className="ml-2 font-mono text-[12px] text-fg-muted">
+                        <span className="ml-2 font-mono text-xs text-fg-muted">
                           {entry.actor ? truncateAddress(entry.actor) : "unattributed"}
                         </span>
                       </span>
-                      <span className="text-right font-mono text-[12px] tabular text-fg-faint">
+                      <span className="text-right font-mono text-xs tabular text-fg-faint">
                         {new Date(entry.occurredAt).toISOString().slice(5, 16).replace("T", " ")}
                       </span>
                     </button>
@@ -233,7 +233,7 @@ export function AuditLog() {
               </div>
             </div>
 
-            <div className="border-t border-line px-4 py-2 text-[11.5px] text-fg-faint">
+            <div className="border-t border-line px-4 py-2 text-2xs text-fg-faint">
               {entries.length} entr{entries.length === 1 ? "y" : "ies"} loaded
               {query.data?.nextCursor ? " · more available" : ""}
             </div>
@@ -248,14 +248,14 @@ export function AuditLog() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={motion.reduced ? { opacity: 0 } : { opacity: 0, x: 12 }}
                 transition={motion.transition("quick")}
-                className="w-full rounded-lg border border-line bg-surface p-5 xl:w-[22rem]"
+                className="w-full panel p-5 xl:w-[22rem]"
                 data-testid="audit-detail"
                 aria-label={`Entry ${selected.entryId} detail`}
               >
-                <p className="font-mono text-[12px] text-fg-faint">Entry #{selected.entryId}</p>
-                <h3 className="mt-1 text-[15px] font-semibold">{actionLabel(selected.action)}</h3>
+                <p className="font-mono text-xs text-fg-faint">Entry #{selected.entryId}</p>
+                <h3 className="mt-1 text-base font-semibold">{actionLabel(selected.action)}</h3>
 
-                <dl className="mt-5 space-y-3.5 text-[12.5px]">
+                <dl className="mt-5 space-y-3.5 text-xs">
                   <Detail term="Actor — who requested it">
                     {selected.actor ? (
                       <span title={selected.actor}>{truncateAddress(selected.actor)}</span>
@@ -308,14 +308,12 @@ export function AuditLog() {
 }
 
 const inputClass =
-  "w-full rounded border border-line bg-base px-2.5 py-2 text-[13px] text-fg placeholder:text-fg-faint";
+  "w-full rounded border border-line bg-base px-2.5 py-2 text-sm text-fg placeholder:text-fg-faint";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] uppercase tracking-[0.08em] text-fg-faint">
-        {label}
-      </span>
+      <span className="mb-1.5 block eyebrow">{label}</span>
       {children}
     </label>
   );
@@ -324,7 +322,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Detail({ term, children }: { term: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-[0.08em] text-fg-faint">{term}</dt>
+      <dt className="eyebrow">{term}</dt>
       <dd className="mt-1 font-mono text-fg-muted [overflow-wrap:anywhere]">{children}</dd>
     </div>
   );
@@ -353,7 +351,7 @@ function LiveToggle({
       onClick={() => onChange(!live)}
       aria-pressed={live}
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.08em] transition-colors",
+        "inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-2xs font-medium uppercase tracking-label transition-colors",
         live
           ? "border-verified/45 bg-verified/8 text-verified"
           : "border-line-strong text-fg-muted hover:bg-hover",
@@ -381,14 +379,11 @@ function AuditError({ error }: { error: ApiError }) {
   const forbidden = error.isForbidden;
 
   return (
-    <div
-      className="mt-5 rounded-lg border border-line bg-surface px-6 py-12 text-center"
-      data-testid="audit-error"
-    >
+    <div className="mt-5 panel px-6 py-12 text-center" data-testid="audit-error">
       <Status tone={forbidden ? "neutral" : error.isUnavailable ? "fallback" : "revoked"}>
         {forbidden ? "Permission required" : error.isUnavailable ? "No network" : "Could not load"}
       </Status>
-      <p className="mx-auto mt-3 max-w-[50ch] text-[13.5px] leading-relaxed text-fg-muted">
+      <p className="mx-auto mt-3 max-w-[50ch] text-sm leading-relaxed text-fg-muted">
         {forbidden
           ? "Reading the audit trail needs the VIEW_AUDIT permission, which your roles do not include. The records exist; this account is not authorized to read them."
           : error.isUnavailable

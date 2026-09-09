@@ -41,7 +41,7 @@ export function ProvenanceTimeline({ nodes }: { nodes: TimelineNode[] }) {
 
   if (nodes.length === 0) {
     return (
-      <p className="text-[13px] text-fg-faint" data-testid="timeline-empty">
+      <p className="text-sm text-fg-faint" data-testid="timeline-empty">
         The chain returned no dated events for this credential.
       </p>
     );
@@ -103,13 +103,13 @@ export function ProvenanceTimeline({ nodes }: { nodes: TimelineNode[] }) {
             </span>
 
             <div className="min-w-0 pt-0.5">
-              <p className="text-[13.5px] font-medium text-fg">{node.label}</p>
-              <p className="mt-0.5 text-[13px] leading-relaxed text-fg-muted [overflow-wrap:anywhere]">
+              <p className="text-sm font-medium text-fg">{node.label}</p>
+              <p className="mt-0.5 text-sm leading-relaxed text-fg-muted [overflow-wrap:anywhere]">
                 {node.value}
               </p>
               {node.at && (
                 <time
-                  className="mt-1 block font-mono text-[11.5px] tabular text-fg-faint"
+                  className="mt-1 block font-mono text-2xs tabular text-fg-faint"
                   dateTime={node.at}
                 >
                   {new Date(node.at).toISOString().replace("T", " ").slice(0, 19)} UTC
