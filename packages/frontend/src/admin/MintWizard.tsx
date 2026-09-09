@@ -3,12 +3,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { UploadCloud } from "lucide-react";
 import { useRef, useState, type DragEvent } from "react";
 
+import { useSignTypedData } from "wagmi";
+
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 import { useToast } from "@/components/ui/toast";
 import { apiBaseUrl } from "@/config/env";
 import { TransactionTrail } from "@/chain/TransactionTrail";
-import { useNetwork } from "@/api/queries";
+import { queryKeys, useNetwork, useSession } from "@/api/queries";
+import { forwardSigned, toSignable, type PreparedTypedData } from "@/api/forward";
+import { humanErrorText } from "@/api/errors";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +27,22 @@ import { cn } from "@/lib/utils";
  * Upload progress is real. It comes from `XMLHttpRequest.upload.onprogress`, because
  * `fetch` still cannot report request-body progress — a spinner that merely spins while a
  * 20 MB file uploads tells the user nothing about whether it is moving.
+ *
+ * ## Two faults this form had, and what they teach
+ *
+ * It sent `name`, `description` and `file`, and no `toDID`. The endpoint's schema is strict
+ * and requires one, so **every mint failed with a 400** — an asset is allocated to an
+ * identity, and there was nowhere to say which.
+ *
+ * Worse, it then reported success. `POST /assets/mint` answers **200 with EIP-712 typed data
+ * to sign**; it pins the metadata and prepares a call, and submits nothing. The wizard treated
+ * any 2xx as "handed to the relayer" — so had the first fault been fixed alone, the interface
+ * would have announced a mint that did not exist. That is precisely the overclaim this
+ * codebase refuses everywhere else, and it survived here because the endpoint changed shape
+ * after the wizard was written and nothing forced the wizard to keep up.
+ *
+ * So the flow now finishes the sentence: upload, sign what came back, forward it, and report
+ * only what the relayer actually accepted.
  */
 
 type Step = 0 | 1 | 2;
@@ -40,6 +60,14 @@ export function MintWizard() {
   const [step, setStep] = useState<Step>(0);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  /**
+   * Who receives the asset.
+   *
+   * Empty means the signed-in identity, which is the overwhelmingly common case and the one
+   * that should need no typing. Anything else is an address or a DID hash; an address is
+   * resolved to its identity before the mint, because the registry allocates to identities.
+   */
+  const [recipient, setRecipient] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -49,11 +77,18 @@ export function MintWizard() {
   const [lastHash, setLastHash] = useState<string | null>(null);
   // For the explorer link: which chain this landed on, and whether it has an explorer.
   const network = useNetwork();
+  const session = useSession();
+  const { signTypedDataAsync } = useSignTypedData();
   const [fileError, setFileError] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const detailsValid = name.trim().length > 0 && description.trim().length > 0;
+  const trimmedRecipient = recipient.trim();
+  const isAddress = /^0x[0-9a-fA-F]{40}$/.test(trimmedRecipient);
+  const isDidHash = /^0x[0-9a-fA-F]{64}$/.test(trimmedRecipient);
+  const recipientValid = trimmedRecipient === "" || isAddress || isDidHash;
+
+  const detailsValid = name.trim().length > 0 && description.trim().length > 0 && recipientValid;
 
   const acceptFile = (candidate: File | undefined) => {
     if (!candidate) return;
@@ -75,7 +110,48 @@ export function MintWizard() {
     acceptFile(event.dataTransfer.files[0]);
   };
 
-  const submit = () => {
+  /**
+   * Turns whatever was typed into the DID the registry wants.
+   *
+   * Empty is the signed-in identity. A DID hash is already one. An address is resolved
+   * through `GET /roles/:address`, which answers with the identity behind it — and null when
+   * there is none, which is a real answer worth a real sentence: an address without an
+   * identity cannot hold an asset, and the fix is one screen away.
+   */
+  const resolveRecipientDID = async (): Promise<string> => {
+    if (trimmedRecipient === "") {
+      const own = session.data?.did;
+      if (!own) {
+        throw new Error(
+          "Your session has no identity on this network, so there is nothing to mint to. Register one first.",
+        );
+      }
+      return own;
+    }
+
+    if (isDidHash) return trimmedRecipient;
+
+    const response = await fetch(`${apiBaseUrl}/roles/${trimmedRecipient}`, {
+      credentials: "include",
+    });
+    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (!response.ok) {
+      throw new Error(
+        humanErrorText(typeof body.error === "string" ? body.error : "invalid_request"),
+      );
+    }
+
+    if (typeof body.did !== "string" || body.did.length === 0) {
+      throw new Error(
+        "That address has no identity yet, so it cannot hold an asset. Register one for it under Identities, then mint.",
+      );
+    }
+
+    return body.did;
+  };
+
+  const submit = async () => {
     if (!file || !detailsValid || submitting) return;
 
     setSubmitting(true);
@@ -85,13 +161,29 @@ export function MintWizard() {
     const toastId = toast.push({
       status: "pending",
       title: "Minting asset",
-      detail: "Uploading artwork and submitting the transaction…",
+      detail: "Pinning artwork, then asking you to sign the mint.",
     });
+
+    let toDID: string;
+    try {
+      toDID = await resolveRecipientDID();
+    } catch (error) {
+      setSubmitting(false);
+      toast.resolve(toastId, {
+        status: "error",
+        title: "Mint not started",
+        detail: error instanceof Error ? error.message : "The recipient could not be resolved.",
+      });
+      return;
+    }
 
     const body = new FormData();
     body.append("name", name.trim());
     body.append("description", description.trim());
     body.append("file", file);
+    // The field whose absence made every mint a 400. An asset is allocated to an identity;
+    // there is no such thing as minting to nobody.
+    body.append("toDID", toDID);
 
     // XHR rather than fetch: only XHR reports upload progress, and this is the one request
     // in the app where the user genuinely needs to see it move.
@@ -103,9 +195,7 @@ export function MintWizard() {
       if (event.lengthComputable) setProgress(event.loaded / event.total);
     };
 
-    xhr.onload = () => {
-      setSubmitting(false);
-
+    xhr.onload = async () => {
       let parsed: Record<string, unknown> = {};
       try {
         parsed = JSON.parse(xhr.responseText) as Record<string, unknown>;
@@ -115,38 +205,100 @@ export function MintWizard() {
 
       if (xhr.status >= 200 && xhr.status < 300) {
         /*
-         * "Submitted", not "minted".
+         * The upload succeeded, and nothing has been minted yet.
          *
-         * This fires on a 202 from the relayer, which means the request was accepted and
-         * broadcast — not that the chain has included it. Claiming it was "recorded
-         * on-chain" at this moment asserts something no one has verified yet, and on a
-         * platform whose whole claim is verifiability that is the one thing not to say
-         * loosely. The transaction trail below reports what actually happened.
+         * A 200 here means the metadata is pinned and a call has been *prepared*. The mint
+         * happens when the administrator signs that call and it is relayed — which is what
+         * attributes it to them rather than to the relayer that pays. Reporting success at
+         * this point was the bug: it announced a mint whose transaction did not exist.
          */
-        const hash = typeof parsed.transactionHash === "string" ? parsed.transactionHash : null;
-        setLastHash(hash);
+        try {
+          const typedData = parsed.typedData as PreparedTypedData | undefined;
+          if (!typedData) throw new Error("The API did not return a request to sign.");
 
-        toast.resolve(toastId, {
-          status: "success",
-          title: "Mint submitted",
-          detail: "Signed and handed to the relayer. Watch below for confirmation.",
-          reference: hash ?? undefined,
-        });
+          const signable = toSignable(typedData);
+
+          toast.resolve(toastId, {
+            status: "pending",
+            title: "Sign the mint",
+            detail: "Artwork is pinned. Approve the request in your wallet to record it.",
+          });
+
+          const signature = await signTypedDataAsync({
+            domain: signable.domain,
+            types: signable.types,
+            primaryType: signable.primaryType,
+            message: signable.message,
+          } as never);
+
+          const relayed = await forwardSigned(typedData, signature);
+
+          /*
+           * "Submitted", not "minted".
+           *
+           * The relayer has accepted and broadcast it; the chain has not necessarily included
+           * it. Claiming it was "recorded on-chain" here asserts something nobody has verified
+           * yet, and on a platform whose whole claim is verifiability that is the one thing
+           * not to say loosely. The transaction trail below reports what actually happened.
+           */
+          const hash = relayed.transactionHash ?? null;
+          setLastHash(hash);
+          setSubmitting(false);
+
+          toast.resolve(toastId, {
+            status: "success",
+            title: "Mint submitted",
+            detail: "Signed by you and handed to the relayer. Watch below for confirmation.",
+            reference: hash ?? undefined,
+          });
+        } catch (error) {
+          setSubmitting(false);
+          toast.resolve(toastId, {
+            status: "error",
+            title: "Mint not submitted",
+            detail:
+              error instanceof Error
+                ? error.message
+                : "The prepared mint could not be signed or relayed.",
+          });
+          // Deliberately no reset: the details and the file are still correct, and making
+          // somebody re-enter them after declining a wallet prompt would be its own bug.
+          return;
+        }
 
         // The audit trail is the source every other panel reads, so invalidating it is what
         // makes the new entry appear rather than optimistically inserting a row we have not
         // actually read back.
         void queryClient.invalidateQueries({ queryKey: ["audit"] });
 
+        void queryClient.invalidateQueries({ queryKey: queryKeys.ownedAssets });
+
         setStep(0);
         setName("");
         setDescription("");
+        setRecipient("");
         setFile(null);
         setProgress(0);
         return;
       }
 
+      // Without this the form stayed "Minting…" forever after a rejection — the failure path
+      // relied on a reset that only the success path performed.
+      setSubmitting(false);
+
       const code = typeof parsed.error === "string" ? parsed.error : `HTTP ${xhr.status}`;
+
+      /*
+       * The validation detail, not just the code.
+       *
+       * The API answers a malformed mint with `invalid_request` and an `issues` array naming
+       * the offending field. This used to render the bare code, which is how a mint that was
+       * failing on a missing `toDID` could look like a generic "Mint failed" for as long as
+       * it did. If the server has taken the trouble to say which field, show it.
+       */
+      const issues = Array.isArray(parsed.issues)
+        ? (parsed.issues as unknown[]).filter((i): i is string => typeof i === "string")
+        : [];
 
       toast.resolve(toastId, {
         status: "error",
@@ -154,7 +306,9 @@ export function MintWizard() {
         detail:
           xhr.status === 403
             ? "Minting needs the MINT_ASSET permission on your own address. The contract would refuse this too."
-            : code,
+            : issues.length > 0
+              ? issues.join("; ")
+              : humanErrorText(code),
       });
     };
 
@@ -232,6 +386,34 @@ export function MintWizard() {
                     className="w-full resize-y rounded border border-line bg-canvas px-3 py-2 text-base"
                     data-testid="mint-description"
                   />
+                </label>
+
+                {/*
+                  The recipient — the field whose absence made every mint fail.
+
+                  Optional, because minting to yourself is the common case and should need no
+                  typing. An asset belongs to an identity, so an address entered here is
+                  resolved to the identity behind it before anything is signed.
+                */}
+                <label className="block">
+                  <span className="mb-1.5 block eyebrow">Recipient</span>
+                  <input
+                    value={recipient}
+                    onChange={(event) => setRecipient(event.target.value)}
+                    placeholder={session.data?.did ? "Your own identity" : "0x…"}
+                    spellCheck={false}
+                    className="w-full rounded border border-line bg-canvas px-3 py-2 font-mono text-sm"
+                    data-testid="mint-recipient"
+                  />
+                  <span className="mt-1.5 block text-xs leading-relaxed text-fg-faint">
+                    {trimmedRecipient === ""
+                      ? "Left empty, the asset is minted to your own identity."
+                      : isAddress
+                        ? "An address. It will be resolved to the identity that controls it."
+                        : isDidHash
+                          ? "A DID hash — the identity that will own the asset."
+                          : "Enter an address (40 hex characters) or a DID hash (64), or leave it empty."}
+                  </span>
                 </label>
               </div>
             )}
@@ -318,6 +500,9 @@ export function MintWizard() {
                   <dl className="mt-4 space-y-2 text-sm">
                     <Summary term="Name">{name}</Summary>
                     <Summary term="Description">{description}</Summary>
+                    <Summary term="Recipient">
+                      {trimmedRecipient === "" ? "Your own identity" : trimmedRecipient}
+                    </Summary>
                     <Summary term="File">
                       {file ? `${file.name} (${(file.size / 1024).toFixed(0)} KB)` : "—"}
                     </Summary>

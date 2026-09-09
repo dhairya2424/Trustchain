@@ -186,6 +186,57 @@ if (transferCount > 0) {
   }
 }
 
+console.log("\n2b. Minting actually mints");
+
+/*
+ * The reported fault, driven through the interface.
+ *
+ * The wizard sent no `toDID`, so every mint answered 400 — and then reported success anyway,
+ * because it treated the prepare endpoint's 200 as "handed to the relayer". Either fault alone
+ * is enough to make this section fail: a 400 leaves no transaction, and a false success leaves
+ * no `/network/forward` call.
+ */
+await page.goto(`${APP}/admin/mint`, { waitUntil: "networkidle" });
+
+let forwardCalls = 0;
+const countForwards = (response) => {
+  if (response.url().includes("/network/forward")) forwardCalls += 1;
+};
+page.on("response", countForwards);
+
+await page.getByTestId("mint-name").fill(`Browser mint ${Date.now()}`);
+await page.getByTestId("mint-description").fill("Minted by tools/e2e-gaps-browser.mjs");
+// Recipient left empty: the common case, which must resolve to the signed-in identity.
+await page.getByTestId("wizard-next").click();
+
+const png = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+);
+await page.setInputFiles('[data-testid="file-input"]', {
+  name: "art.png",
+  mimeType: "image/png",
+  buffer: png,
+});
+
+await page.getByTestId("wizard-next").click();
+await page.getByTestId("wizard-submit").click();
+
+// Pinning to IPFS then signing then relaying: slower than a single request, and worth waiting
+// for, because the whole point is that something reaches the chain.
+const minted = await page
+  .getByText(/Mint submitted/i)
+  .first()
+  .waitFor({ state: "visible", timeout: 90_000 })
+  .then(() => true)
+  .catch(() => false);
+
+check("the wizard reports a submitted mint", minted);
+check("and a signed request really was forwarded", forwardCalls > 0, `${forwardCalls} calls`);
+page.off("response", countForwards);
+
+await page.screenshot({ path: path.join(SHOTS, "gaps-mint.png"), fullPage: true });
+
 console.log("\n3. The admin console offers credentials");
 
 await page.goto(`${APP}/admin/credentials`, { waitUntil: "networkidle" });

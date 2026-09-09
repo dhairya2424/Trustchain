@@ -1,6 +1,7 @@
 import { motion as fm, useMotionValue, useSpring, useTransform } from "framer-motion";
-import { QRCodeSVG } from "qrcode.react";
-import { useEffect, useState, type PointerEvent } from "react";
+import { Download } from "lucide-react";
+import { QRCodeCanvas, QRCodeSVG } from "qrcode.react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { env } from "@/config/env";
 import { Status } from "@/components/ui/status";
@@ -204,6 +205,8 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
                   Local address — set VITE_PUBLIC_APP_URL to scan from a phone.
                 </p>
               )}
+
+              <QrDownload url={verifyUrl} did={session.did} />
             </fm.div>
           )}
         </div>
@@ -220,5 +223,85 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
         </div>
       </fm.div>
     </div>
+  );
+}
+
+/**
+ * Save the QR as a PNG, so it can be printed, shared or put on a badge.
+ *
+ * ## It is deliberately not a picture of the one on screen
+ *
+ * The QR rendered above is pale grey on transparent, which is correct against this dark card
+ * and unscannable the moment it lands anywhere else — dropped into a white document it is
+ * near-invisible, and a transparent PNG composited onto a light background is worse. A code
+ * that cannot be read is not a code.
+ *
+ * So the download re-renders the same URL as **black on white**, at 1024px, from a hidden
+ * canvas. Same payload, same error-correction level, contrast that survives being printed on
+ * an office laser and photographed under fluorescent light.
+ *
+ * The canvas is only mounted while a download is being produced, so an idle dashboard is not
+ * carrying a megapixel bitmap for a control nobody pressed.
+ */
+function QrDownload({ url, did }: { url: string; did: string }) {
+  const holderRef = useRef<HTMLDivElement | null>(null);
+  const [preparing, setPreparing] = useState(false);
+
+  const download = () => {
+    setPreparing(true);
+
+    // One frame, so the hidden canvas has actually rendered before it is read.
+    requestAnimationFrame(() => {
+      try {
+        const canvas = holderRef.current?.querySelector("canvas");
+        if (!canvas) return;
+
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+
+          const href = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = href;
+          // Named by the identity it proves, so a folder of these is navigable.
+          link.download = `trustchain-identity-${did.slice(2, 14)}.png`;
+          link.click();
+          // Revoked once the click has been dispatched; holding the object URL open would
+          // pin the bitmap in memory for the life of the page.
+          URL.revokeObjectURL(href);
+          setPreparing(false);
+        }, "image/png");
+      } catch {
+        setPreparing(false);
+      }
+    });
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={download}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded border border-line px-2 py-1 text-2xs text-fg-muted transition-colors hover:border-line-strong hover:text-fg"
+        data-testid="qr-download"
+      >
+        <Download className="size-3" aria-hidden="true" />
+        {preparing ? "Preparing…" : "Download"}
+      </button>
+
+      {preparing && (
+        <div ref={holderRef} className="sr-only" aria-hidden="true">
+          <QRCodeCanvas
+            value={url}
+            size={1024}
+            bgColor="#ffffff"
+            fgColor="#000000"
+            level="Q"
+            // Quiet zone: the white margin a scanner needs to find the code's edges. Without
+            // it a code cropped flush to its modules reads poorly, or not at all.
+            marginSize={4}
+          />
+        </div>
+      )}
+    </>
   );
 }

@@ -90,6 +90,75 @@ async function buildDecoder(): Promise<FrameDecoder> {
   };
 }
 
+/**
+ * Decode a QR from an image file — a screenshot, a photo, a saved code.
+ *
+ * The camera is not always the right instrument, and sometimes not an available one. A
+ * verifier is often sent a credential as a picture: a screenshot in a chat, a photo of a
+ * printed badge, a PNG in an email. Asking them to display it on a second screen and point a
+ * webcam at it is theatre.
+ *
+ * It uses the same decoder strategy as the live scanner — the browser's own where it exists,
+ * jsQR loaded on demand where it does not — because the reason the live path needed a
+ * fallback (Windows Chrome ships no `BarcodeDetector`) applies identically here.
+ *
+ * ## Why it tries twice
+ *
+ * A photograph of a code is usually far larger than the code needs to be, and jsQR scans a
+ * full-resolution image slowly and, on a noisy phone photo, sometimes not at all. So a failed
+ * full-size read is retried on a downscaled copy, which suppresses sensor noise and often
+ * succeeds where the original did not. Two attempts, then an honest "no code found" — a
+ * scanner that silently gives up is indistinguishable from one that is broken.
+ */
+export async function decodeImageFile(file: File): Promise<string | null> {
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return null;
+
+  try {
+    const native = (window as WindowWithDetector).BarcodeDetector;
+    if (native) {
+      const detector = new native({ formats: ["qr_code"] });
+      const found = await detector.detect(bitmap).catch(() => []);
+      const value = found[0]?.rawValue?.trim();
+      if (value) return value;
+      // Fall through to jsQR rather than trusting a single detector: the native one is
+      // stricter about blur than jsQR is, and a photo of a badge is usually a bit blurred.
+    }
+
+    const { default: jsQR } = await import("jsqr");
+
+    const attempt = (maxEdge: number): string | null => {
+      const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return null;
+
+      context.drawImage(bitmap, 0, 0, width, height);
+      const image = context.getImageData(0, 0, width, height);
+
+      // "attemptBoth" reads a light-on-dark code as readily as the usual dark-on-light —
+      // this application's own on-screen QR is the former.
+      return (
+        jsQR(image.data, image.width, image.height, {
+          inversionAttempts: "attemptBoth",
+        })?.data?.trim() ?? null
+      );
+    };
+
+    return attempt(2000) ?? attempt(800);
+  } finally {
+    // Bitmaps hold decoded pixels; a verifier checking a dozen codes should not accumulate
+    // a dozen full-resolution buffers.
+    bitmap.close?.();
+  }
+}
+
 export interface QrScannerProps {
   onResult: (value: string) => void;
   onClose: () => void;

@@ -1,5 +1,5 @@
 import { motion as fm } from "framer-motion";
-import { Check, Link2, QrCode } from "lucide-react";
+import { Check, Image as ImageIcon, Link2, QrCode } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -12,7 +12,7 @@ import { humanError, humanErrorText } from "@/api/errors";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn } from "@/lib/utils";
 import { ProvenanceTimeline } from "@/verify/ProvenanceTimeline";
-import { QrScanner, isQrSupported } from "@/verify/QrScanner";
+import { QrScanner, decodeImageFile, isQrSupported } from "@/verify/QrScanner";
 import { ScanBeam } from "@/verify/ScanBeam";
 import { IdentityVerdict, type ResolvedIdentity } from "@/verify/IdentityVerdict";
 import { VerdictBanner } from "@/verify/VerdictBanner";
@@ -81,6 +81,9 @@ export function Verify() {
   // A scanned identity QR resolves here rather than at the credential endpoint.
   const [identity, setIdentity] = useState<ResolvedIdentity | null>(null);
   const [copied, setCopied] = useState(false);
+  // Decoding a photograph takes a moment; the control says so rather than appearing inert.
+  const [decodingImage, setDecodingImage] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Guards the auto-verify so a re-render cannot fire a second request for the same link.
   const autoRan = useRef(false);
@@ -218,6 +221,44 @@ export function Verify() {
     [verify],
   );
 
+  /**
+   * A QR read out of a picture, then treated exactly like one read from the camera.
+   *
+   * The decode runs entirely in the browser: the image is never uploaded, which matters
+   * because the thing being photographed is frequently somebody's credential. A file that
+   * holds no code is reported as such rather than passed on to the verifier, where it would
+   * come back as "that is neither a hash nor a JWT" and blame the wrong thing.
+   */
+  const handleImageFile = useCallback(
+    async (file: File) => {
+      setDecodingImage(true);
+      setError(null);
+
+      try {
+        const value = await decodeImageFile(file);
+
+        if (!value) {
+          setPhase("error");
+          setIdentity(null);
+          setResponse(null);
+          setError(
+            "No QR code was found in that image. A tighter crop, or a sharper photo, is usually enough — the code needs to be fully in frame.",
+          );
+          return;
+        }
+
+        setScanning(false);
+        await handleScanned(value);
+      } catch {
+        setPhase("error");
+        setError("That file could not be read as an image.");
+      } finally {
+        setDecodingImage(false);
+      }
+    },
+    [handleScanned],
+  );
+
   const verdict = useMemo(() => (response ? decideVerdict(response) : null), [response]);
   const timeline = useMemo(() => (response ? buildTimeline(response) : []), [response]);
 
@@ -302,6 +343,50 @@ export function Verify() {
               {scanning ? "Stop scanning" : "Scan QR"}
             </Button>
           )}
+
+          {/*
+            A QR from a file, not only from a camera.
+
+            Credentials arrive as pictures far more often than as things to point a webcam
+            at: a screenshot in a chat, a photo of a printed badge, a saved PNG. This needs no
+            camera and no permission prompt, so it is offered unconditionally — including on
+            the desktops where `getUserMedia` is unavailable and the scan button is not.
+          */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => imageInputRef.current?.click()}
+            disabled={decodingImage}
+            data-testid="verify-upload"
+          >
+            <ImageIcon className="size-4" aria-hidden="true" />
+            {decodingImage ? "Reading image…" : "Verify from an image"}
+          </Button>
+
+          {/*
+            Named, and out of the tab order.
+
+            The visible button is the control; this input is the mechanism behind it. Left
+            unnamed it is a critical axe violation — a screen reader announces "file upload
+            button" and nothing else — and left tabbable it is a second, invisible stop for
+            the same action. So it carries a label for anyone who reaches it programmatically,
+            and `tabIndex={-1}` so nobody reaches it by tabbing.
+          */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            aria-label="Choose an image containing a QR code to verify"
+            tabIndex={-1}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              // Cleared so choosing the same file twice fires a change event both times.
+              event.target.value = "";
+              if (file) void handleImageFile(file);
+            }}
+            data-testid="verify-image-input"
+          />
 
           <span className="text-xs text-fg-faint">
             Pasting the full credential checks its signature too; a hash alone checks only the

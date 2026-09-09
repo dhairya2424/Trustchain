@@ -67,13 +67,29 @@ export function RoleManager() {
 
   const [draft, setDraft] = useState("");
   const [subject, setSubject] = useState<string | null>(null);
+  /**
+   * True between signing a registration and the chain showing it.
+   *
+   * A registration is relayed, not executed inline: the wallet signs, the relayer broadcasts,
+   * and the DID exists a block or two later. Refetching once on success — which is what this
+   * did — asks the chain a question it cannot answer yet, gets `did: null` back, and leaves
+   * every role control disabled. The registration had worked; the console just said it had
+   * not, and the only cure was reloading the page half a minute later.
+   */
+  const [awaitingIdentity, setAwaitingIdentity] = useState(false);
 
   const lookup = useQuery<RolesOf, ApiError>({
     queryKey: ["roles", subject],
     queryFn: ({ signal }) => apiGet<RolesOf>(`/roles/${subject}`, signal),
     enabled: Boolean(subject),
     retry: false,
+    // Poll only while waiting for a registration to land, and stop the moment it has.
+    refetchInterval: awaitingIdentity ? 4000 : false,
   });
+
+  // The identity arrived: stop polling. Done during render rather than in an effect because
+  // it is derived from the query's own data and needs no subscription of its own.
+  if (awaitingIdentity && lookup.data?.did) setAwaitingIdentity(false);
 
   return (
     <div className="min-w-0">
@@ -119,7 +135,13 @@ export function RoleManager() {
       )}
 
       {lookup.data && (
-        <SubjectPanel subject={lookup.data} canManage={canManage} session={session.data} />
+        <SubjectPanel
+          subject={lookup.data}
+          canManage={canManage}
+          session={session.data}
+          awaitingIdentity={awaitingIdentity}
+          onRegistrationSubmitted={() => setAwaitingIdentity(true)}
+        />
       )}
 
       {!lookup.data && (
@@ -148,10 +170,15 @@ function SubjectPanel({
   subject,
   canManage,
   session,
+  awaitingIdentity,
+  onRegistrationSubmitted,
 }: {
   subject: RolesOf;
   canManage: boolean;
   session: Session | undefined;
+  /** True while a signed registration is on its way to the chain. */
+  awaitingIdentity: boolean;
+  onRegistrationSubmitted: () => void;
 }) {
   const motion = useMotion();
   const toast = useToast();
@@ -263,7 +290,13 @@ function SubjectPanel({
         against the deployer key. An administrator was shown a problem and no way to solve
         it, on the screen built for solving exactly that class of problem.
       */}
-      {!subject.did && <RegisterIdentity address={subject.address} />}
+      {!subject.did && (
+        <RegisterIdentity
+          address={subject.address}
+          awaiting={awaitingIdentity}
+          onSubmitted={onRegistrationSubmitted}
+        />
+      )}
 
       <div className="overflow-hidden rounded-b-lg border border-x-line border-b-line bg-surface">
         {ROLES.map((role) => {
@@ -358,7 +391,16 @@ function SubjectPanel({
  * not chosen here and not supplied by the browser: a client able to name the hash could
  * register an address under an identity that already means something else.
  */
-function RegisterIdentity({ address }: { address: string }) {
+function RegisterIdentity({
+  address,
+  awaiting,
+  onSubmitted,
+}: {
+  address: string;
+  /** The registration is signed and relayed, and the chain has not shown it yet. */
+  awaiting: boolean;
+  onSubmitted: () => void;
+}) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const run = usePreparedAction();
@@ -388,14 +430,20 @@ function RegisterIdentity({ address }: { address: string }) {
 
       toast.resolve(toastId, {
         status: "success",
-        title: "Identity registered",
-        detail: `${String(prepared.didHash).slice(0, 14)}… now resolves to this address.`,
+        title: "Identity submitted",
+        detail: `${String(prepared.didHash).slice(0, 14)}… will resolve to this address once the transaction confirms.`,
         reference: forwarded.transactionHash,
       });
 
-      // Re-read the lookup so the role switches come alive. The identity is the thing that
-      // was blocking them, and leaving them disabled until a manual refresh would make a
-      // successful registration look like it had not worked.
+      /*
+       * Start watching, rather than asking once.
+       *
+       * The registration is relayed: it is signed here and mined a block or two later. A
+       * single refetch at this moment reads a chain that has not caught up, gets `did: null`
+       * back, and leaves every role switch disabled — which is exactly what "I registered an
+       * identity and the controls still do nothing" looks like from the outside.
+       */
+      onSubmitted();
       await queryClient.invalidateQueries({ queryKey: ["roles"] });
       await queryClient.invalidateQueries({ queryKey: ["audit"] });
     } catch (caught) {
@@ -428,14 +476,25 @@ function RegisterIdentity({ address }: { address: string }) {
         </p>
       )}
 
+      {awaiting && (
+        <p className="mt-3 text-sm text-fallback" data-testid="register-awaiting">
+          Signed and handed to the relayer. The role controls below come alive as soon as the chain
+          shows the identity — usually a few seconds. Nothing needs reloading.
+        </p>
+      )}
+
       <Button
         size="sm"
         className="mt-4"
         onClick={register}
-        disabled={busy}
+        disabled={busy || awaiting}
         data-testid="register-identity-submit"
       >
-        {busy ? "Awaiting signature…" : "Register an identity"}
+        {busy
+          ? "Awaiting signature…"
+          : awaiting
+            ? "Waiting for the chain…"
+            : "Register an identity"}
       </Button>
     </div>
   );

@@ -148,6 +148,67 @@ describe("RoleManager — registering an identity", () => {
   });
 });
 
+describe("RoleManager — waiting for the registration to land", () => {
+  it("keeps looking until the chain shows the identity, then enables the role controls", async () => {
+    /*
+     * The reported fault: "when we enter the address it is not allowing to change the
+     * controls".
+     *
+     * A registration is relayed, not executed inline — signed here, mined a block or two
+     * later. The console refetched once on success, read a chain that had not caught up, got
+     * `did: null` back, and left every role switch disabled. The registration had worked; the
+     * interface said it had not, and only a page reload half a minute later disagreed.
+     */
+    let lookups = 0;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+
+        if (url.includes("/auth/session")) {
+          return new Response(
+            JSON.stringify({ address: `0x${"1".repeat(40)}`, didHash: null, roles: ["ADMIN"] }),
+            { status: 200 },
+          );
+        }
+
+        if (url.includes("/roles/")) {
+          lookups += 1;
+          // The chain catches up on the third read, as it would after a block or two.
+          const did = lookups >= 3 ? `0x${"ab".repeat(32)}` : null;
+          return new Response(JSON.stringify({ address: ADDRESS, did, roles: [] }), {
+            status: 200,
+          });
+        }
+
+        if (url.includes("/identity/register")) {
+          return new Response(JSON.stringify(PREPARED), { status: 200 });
+        }
+        if (url.includes("/network/forward")) {
+          return new Response(JSON.stringify({ transactionHash: `0x${"9".repeat(64)}` }), {
+            status: 200,
+          });
+        }
+        return new Response("{}", { status: 200 });
+      }),
+    );
+
+    await lookUp();
+    fireEvent.click(await screen.findByTestId("register-identity-submit"));
+
+    // While waiting, it says so rather than looking inert or finished.
+    expect(await screen.findByTestId("register-awaiting")).toBeInTheDocument();
+
+    // And it keeps asking until the answer changes — no reload, no second click.
+    await waitFor(() => expect(screen.getByTestId("role-toggle-USER")).toBeEnabled(), {
+      timeout: 20_000,
+    });
+
+    expect(screen.queryByTestId("register-identity")).not.toBeInTheDocument();
+  }, 25_000);
+});
+
 describe("RoleManager — when the registry refuses", () => {
   it("distinguishes the DIDRegistry's admin role from the platform's", async () => {
     stubApi({ status: 403, body: { error: "forbidden" } });
