@@ -49,6 +49,21 @@ export interface NetworkDependencies {
   logger: Logger;
   /** Required for /forward, which relays at the platform's expense. */
   resolveCaller: CallerResolver;
+  /**
+   * Records a relayed transaction so its confirmation can be followed.
+   *
+   * Optional: without an indexer there is nothing to follow it with, and the relay itself
+   * must not depend on the tracker being present.
+   */
+  tracker?:
+    | {
+        trackSubmission(input: {
+          transactionHash: string;
+          actor: string | null;
+          action: string | null;
+        }): Promise<void>;
+      }
+    | undefined;
 }
 
 export function createNetworkRouter(deps: NetworkDependencies): Router {
@@ -210,9 +225,40 @@ export function createNetworkRouter(deps: NetworkDependencies): Router {
         transactionId: relayed.transactionId,
       });
 
+      /*
+       * Start following it before answering.
+       *
+       * The relayer reports a transaction id immediately and a hash once it has actually
+       * broadcast, so a hash is not always available yet. When it is, the transaction
+       * enters the lifecycle here — which is what lets the browser show "pending" and then
+       * be told it confirmed, rather than polling and guessing.
+       *
+       * A tracking failure must never fail the relay: the transaction is already on its way
+       * and reporting an error would tell the caller the opposite of the truth.
+       */
+      if (relayed.hash && deps.tracker) {
+        try {
+          await deps.tracker.trackSubmission({
+            transactionHash: relayed.hash,
+            // From the session. The verifier already refused anything else.
+            actor: caller.address,
+            action: null,
+          });
+        } catch (error) {
+          deps.logger.log({
+            level: "warn",
+            msg: "chain.track_failed",
+            requestId: req.requestId,
+            detail: error instanceof Error ? error.message : "unknown",
+          });
+        }
+      }
+
       res.status(202).json({
         status: relayed.status,
         transactionId: relayed.transactionId,
+        // The hash the browser follows. Null until the relayer has broadcast.
+        transactionHash: relayed.hash ?? null,
         // The actor is the session's address by construction — the verifier refused
         // anything else — so reporting it here is a statement, not a guess.
         actor: caller.address,

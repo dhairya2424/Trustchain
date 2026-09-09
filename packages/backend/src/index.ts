@@ -358,7 +358,27 @@ function main(): void {
         }
       : {}),
     ...(assets ? { assets } : {}),
-    ...(selector ? { network: { selector, logger, resolveCaller } } : {}),
+    ...(selector
+      ? {
+          network: {
+            selector,
+            logger,
+            resolveCaller,
+            ...(supervisor ? { tracker: supervisor } : {}),
+          },
+        }
+      : {}),
+    // The live stream needs both an indexer to listen to and a way to check VIEW_AUDIT.
+    ...(selector && supervisor
+      ? {
+          stream: {
+            supervisor,
+            resolveCaller,
+            permissions: new SelectedPermissionReader(selector),
+            logger,
+          },
+        }
+      : {}),
     httpLogger: httpLogger(pino),
     security: {
       // TLS is terminated by Nginx in production, so a plain-HTTP request there means the

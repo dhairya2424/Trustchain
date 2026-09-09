@@ -5,6 +5,7 @@ import { updateProfileRequest } from "@trustchain/shared";
 import { createAssetRouter, type AssetDependencies } from "./assets/routes";
 import { createAuditRouter, type AuditDependencies } from "./audit/routes";
 import { createNetworkRouter, type NetworkDependencies } from "./chain/routes";
+import { createStreamRouter, type StreamDependencies } from "./stream/routes";
 import { createAuthRouter, type AuthDependencies } from "./auth/routes";
 import { createCredentialRouter, type CredentialDependencies } from "./credentials/routes";
 import { createProfileRouter, type ProfileDependencies } from "./profiles/routes";
@@ -31,6 +32,8 @@ export interface ServerOptions {
   credentials?: CredentialDependencies;
   /** Role administration: two prepare endpoints and a public-ish read. */
   roles?: RoleDependencies;
+  /** Server-sent events: confirmed chain activity, pushed rather than polled. */
+  stream?: StreamDependencies;
   logger?: Logger;
   security?: SecurityOptions;
   /**
@@ -110,6 +113,10 @@ export function createServer(options: ServerOptions = {}): Express {
 
   if (options.network) {
     app.use("/network", createNetworkRouter(options.network));
+  }
+
+  if (options.stream) {
+    app.use("/stream", createStreamRouter(options.stream));
   }
 
   if (options.audit) {
