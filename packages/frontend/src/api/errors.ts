@@ -116,6 +116,33 @@ const BY_PATTERN: { test: RegExp; error: HumanError }[] = [
     },
   },
   {
+    /*
+     * wagmi's ProviderNotFoundError, which surfaces as "Provider not found. Version:
+     * @wagmi/core@3.6.5". It means only one thing — this browser has no wallet extension —
+     * and it says none of it, while leaking a library version to someone who cannot use it.
+     */
+    test: /provider not found|no injected provider|window\.ethereum is undefined/i,
+    error: {
+      message: "No wallet extension was found in this browser.",
+      action:
+        "Install MetaMask or another Ethereum wallet and reload. Verifying a credential needs no wallet at all.",
+    },
+  },
+  {
+    test: /already pending|request of type .* already pending|resource unavailable/i,
+    error: {
+      message: "Your wallet is already showing a request.",
+      action: "Open the wallet and respond to it, then try again.",
+    },
+  },
+  {
+    test: /connector not found|connector already connected/i,
+    error: {
+      message: "That wallet is not available to connect right now.",
+      action: "Reload the page and try again.",
+    },
+  },
+  {
     test: /insufficient funds|insufficient balance/i,
     error: {
       message: "The account paying for this transaction has no funds.",

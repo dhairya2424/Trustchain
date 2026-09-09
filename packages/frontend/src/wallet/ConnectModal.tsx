@@ -3,9 +3,11 @@ import { ArrowRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useConnect, type Connector } from "wagmi";
 
+import { humanError } from "@/api/errors";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useMotion } from "@/motion/MotionProvider";
+import { cn } from "@/lib/utils";
 import { CheckmarkDraw, ConfettiBurst, PulseRings } from "./ConnectFeedback";
 
 /**
@@ -89,6 +91,28 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
 
   const pendingConnector = connectors.find((c) => c.uid === pendingId);
 
+  /*
+   * Can anything here actually connect?
+   *
+   * wagmi always lists the `injected` connector, whether or not a provider exists behind
+   * it. So with no extension installed the modal offered a button whose only possible
+   * outcome was an error — the user clicks "Injected", waits, and is told a library version.
+   *
+   * WalletConnect is the exception: it needs no extension, because it pairs with a phone.
+   * If one is configured there is still a real route in, so the list stays.
+   */
+  const hasInjectedProvider =
+    typeof window !== "undefined" &&
+    typeof (window as { ethereum?: unknown }).ethereum !== "undefined";
+
+  // Narrow on purpose: only the *generic* injected connector is a dead end without a
+  // provider. A wallet discovered through EIP-6963 gets its own connector id and may not
+  // set window.ethereum at all, and WalletConnect pairs with a phone rather than an
+  // extension — so the presence of anything else means there is still a route in.
+  const onlyGenericInjected =
+    connectors.length > 0 && connectors.every((connector) => connector.id === "injected");
+  const nothingToConnectWith = onlyGenericInjected && !hasInjectedProvider;
+
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent data-testid="connect-modal" data-phase={phase}>
@@ -114,7 +138,40 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
               verify.
             </DialogDescription>
 
-            <ul className="mt-5 grid gap-1.5">
+            {/*
+              No wallet, and no way to pair one. Say so plainly, and point at the thing that
+              still works without an account — a dead button and a library error was the
+              worst of both.
+            */}
+            {nothingToConnectWith && (
+              <div
+                className="mt-5 rounded border border-line bg-canvas px-4 py-4"
+                data-testid="no-wallet-guidance"
+              >
+                <p className="text-sm font-medium text-fg">No wallet extension detected</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-fg-muted">
+                  Signing in needs an Ethereum wallet in this browser. Install{" "}
+                  <a
+                    className="underline underline-offset-4 hover:text-fg"
+                    href="https://metamask.io/download/"
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >
+                    MetaMask
+                  </a>{" "}
+                  or another EIP-1193 wallet, then reload this page.
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-fg-muted">
+                  Verifying a credential needs no wallet and no account —{" "}
+                  <a className="underline underline-offset-4 hover:text-fg" href="/verify">
+                    use the public verify page
+                  </a>
+                  .
+                </p>
+              </div>
+            )}
+
+            <ul className={cn("mt-5 grid gap-1.5", nothingToConnectWith && "hidden")}>
               {connectors.map((connector, index) => (
                 <fm.li
                   key={connector.uid}
@@ -139,17 +196,28 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
             </ul>
 
             {status === "error" && error && (
-              <p
-                className="mt-4 rounded border border-revoked/40 bg-revoked/8 px-3 py-2.5 text-sm text-revoked [overflow-wrap:anywhere]"
+              <div
+                className="mt-4 rounded border border-revoked/40 bg-revoked/8 px-3 py-2.5 text-sm text-revoked"
                 data-testid="connect-error"
               >
                 {/*
-                  Rendered as text by React, never as markup. A wallet's error string is
-                  attacker-influencable in principle — a malicious injected provider
-                  controls it — so it is displayed, not interpreted.
+                  Through humanError, never raw.
+                  
+                  This used to render `error.message` directly, which put
+                  "Provider not found. Version: @wagmi/core@3.6.5" in front of a person who
+                  had simply not installed a wallet — a sentence that names a library, leaks
+                  its version, and does not say the one thing they need to do. api/errors.ts
+                  already existed for exactly this and says so in its own header; this was
+                  the one place that bypassed it.
+
+                  Still text, never markup: a malicious injected provider controls this
+                  string, so it is displayed rather than interpreted.
                 */}
-                {error.message}
-              </p>
+                <p>{humanError(error).message}</p>
+                {humanError(error).action && (
+                  <p className="mt-1 text-revoked/80">{humanError(error).action}</p>
+                )}
+              </div>
             )}
           </>
         )}
