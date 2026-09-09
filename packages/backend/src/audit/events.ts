@@ -1,4 +1,4 @@
-import type { Address, Hex, PublicClient } from "viem";
+import type { Address, GetLogsReturnType, Hex, PublicClient } from "viem";
 import { parseAbiItem } from "viem";
 
 import { ACTION_NAMES, type ActionName } from "./actions";
@@ -209,6 +209,9 @@ const ACTION_LOGGED = parseAbiItem(
   "event ActionLogged(uint256 indexed entryId, bytes32 indexed didHash, uint8 indexed actionCode, address actor, bytes32 refHash, address caller, uint64 timestamp)",
 );
 
+/** Decoded ActionLogged logs — keeps `args` typed, which a bare Log[] does not. */
+type ActionLoggedLogs = GetLogsReturnType<typeof ACTION_LOGGED>;
+
 export interface OnChainAuditOptions {
   client: PublicClient;
   address: Address;
@@ -234,13 +237,87 @@ export interface OnChainAuditOptions {
  * transaction commonly writes several entries, and fetching it once each would multiply
  * the RPC cost for no new information.
  */
+/**
+ * Recognises a provider refusing an eth_getLogs range as too wide.
+ *
+ * There is no standard error code for this. Alchemy answers with a -32600 and prose naming
+ * the cap; Infura says "query returned more than N results"; others say "block range is too
+ * large". Matching on prose is unpleasant but it is the only signal available, and the
+ * alternative — treating a range refusal as a dead RPC — turns a recoverable condition into
+ * an outage.
+ */
+function isRangeTooWide(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /block range/i.test(message) ||
+    /more than \d+ results/i.test(message) ||
+    /query timeout|response size exceeded/i.test(message)
+  );
+}
+
+/** Alchemy names the range that would have worked. Believe it rather than guessing. */
+function suggestedWindow(error: unknown): bigint | undefined {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/should work:\s*\[(0x[0-9a-f]+),\s*(0x[0-9a-f]+)\]/i);
+  if (!match) return undefined;
+  const span = BigInt(match[2]!) - BigInt(match[1]!) + 1n;
+  return span > 0n ? span : undefined;
+}
+
 export class OnChainAuditSource implements AuditEventSource {
-  private readonly windowSize: bigint;
+  private windowSize: bigint;
   private readonly maxWindows: number;
+  /** Smallest window worth attempting; below this the scan cannot make progress. */
+  private static readonly MIN_WINDOW = 10n;
 
   constructor(private readonly options: OnChainAuditOptions) {
     this.windowSize = options.windowSize ?? 10_000n;
     this.maxWindows = options.maxWindows ?? 20;
+  }
+
+  /**
+   * getLogs, narrowing the window until the provider accepts it.
+   *
+   * The configured 10,000 was chosen as "broadly safe for public RPCs", and it is — but
+   * Alchemy's free tier caps the range at **10 blocks**, three orders of magnitude smaller.
+   * A local Hardhat node has no cap at all, so this could not surface until the platform
+   * first ran against a real provider, at which point every /audit request returned 500.
+   *
+   * The learned size is kept on the instance: the cap is a property of the endpoint, not of
+   * one query, so re-discovering it on every window would waste a rejected call each time.
+   */
+  private async getLogsAdaptive(
+    floor: bigint,
+    upper: bigint,
+    args: Record<string, unknown>,
+  ): Promise<{ logs: ActionLoggedLogs; from: bigint }> {
+    const { client, address } = this.options;
+
+    for (;;) {
+      // Recomputed every attempt, because a shrink changes where this window starts. The
+      // caller advances from the returned `from`, never from its own guess — otherwise a
+      // mid-scan shrink would silently skip the blocks between the two.
+      const from = upper - this.windowSize + 1n > floor ? upper - this.windowSize + 1n : floor;
+
+      try {
+        const logs = (await client.getLogs({
+          address,
+          event: ACTION_LOGGED,
+          fromBlock: from,
+          toBlock: upper,
+          args,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any)) as ActionLoggedLogs;
+        return { logs, from };
+      } catch (error) {
+        if (!isRangeTooWide(error) || this.windowSize <= OnChainAuditSource.MIN_WINDOW) throw error;
+
+        const suggestion = suggestedWindow(error);
+        const next = suggestion ?? this.windowSize / 4n;
+        this.windowSize =
+          next < OnChainAuditSource.MIN_WINDOW ? OnChainAuditSource.MIN_WINDOW : next;
+      }
+    }
   }
 
   async query(filter: AuditFilter): Promise<RawAuditEvent[]> {
@@ -265,21 +342,12 @@ export class OnChainAuditSource implements AuditEventSource {
       collected.length < filter.limit &&
       windows < this.maxWindows
     ) {
-      const lower =
-        upper - this.windowSize + 1n > deploymentBlock
-          ? upper - this.windowSize + 1n
-          : deploymentBlock;
-
-      const logs = await client.getLogs({
-        address,
-        event: ACTION_LOGGED,
-        fromBlock: lower,
-        toBlock: upper,
-        // Indexed arguments are filtered by the node, so these cost nothing to apply.
-        args: {
-          ...(filter.didHash ? { didHash: filter.didHash as Hex } : {}),
-          ...(filter.actionCode !== undefined ? { actionCode: filter.actionCode } : {}),
-        },
+      // Indexed arguments are filtered by the node, so these cost nothing to apply.
+      // `lower` comes back from the call rather than being computed here, because the
+      // window may have narrowed inside it to satisfy the provider's cap.
+      const { logs, from: lower } = await this.getLogsAdaptive(deploymentBlock, upper, {
+        ...(filter.didHash ? { didHash: filter.didHash as Hex } : {}),
+        ...(filter.actionCode !== undefined ? { actionCode: filter.actionCode } : {}),
       });
 
       const senders = await this.resolveSenders(logs.map((log) => log.transactionHash));
