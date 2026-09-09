@@ -50,8 +50,17 @@ const config: HardhatUserConfig = {
       accounts: DEPLOYER_PRIVATE_KEY ? [DEPLOYER_PRIVATE_KEY] : [],
     },
   },
+  /*
+   * A single key, not a per-network map.
+   *
+   * The map form (`{ polygonAmoy: ... }`) is Etherscan's V1 shape. V1 was retired, and the
+   * V2 endpoint answers a request made that way with "You are using a deprecated V1
+   * endpoint" — which surfaces as every contract failing verification for what looks like
+   * a contract problem rather than a config one. V2 is multichain: one etherscan.io key
+   * covers Amoy and the network is inferred from the chain id.
+   */
   etherscan: {
-    apiKey: { polygonAmoy: POLYGONSCAN_API_KEY },
+    apiKey: POLYGONSCAN_API_KEY,
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS === "true",
