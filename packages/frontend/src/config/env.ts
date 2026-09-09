@@ -35,6 +35,18 @@ export function assertOnlyPublicVars(raw: Record<string, unknown>): void {
 
 const schema = z.object({
   VITE_PUBLIC_API_URL: z.string().url().default("http://localhost:4000"),
+  /**
+   * Public address of this app, for links that leave the browser.
+   *
+   * Only the QR code needs it, and it needs it badly: a code is scanned by a *different*
+   * device, so `location.origin` — which is `http://localhost:5173` in development —
+   * resolves on the phone to the phone, and the scan fails with "connection refused". The
+   * origin is right in production and wrong for exactly the case QR codes exist for.
+   *
+   * Left empty, the app falls back to the origin and says plainly when the resulting link
+   * cannot leave this machine, rather than printing a code that quietly does not work.
+   */
+  VITE_PUBLIC_APP_URL: z.string().url().or(z.literal("")).default(""),
   VITE_PUBLIC_CHAIN_ID: z.coerce.number().int().positive().default(31337),
   VITE_PUBLIC_CHAIN_RPC_URL: z.string().url().default("http://127.0.0.1:8545"),
   VITE_PUBLIC_WALLETCONNECT_PROJECT_ID: z.string().default(""),

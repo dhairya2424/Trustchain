@@ -2,6 +2,7 @@ import { motion as fm, useMotionValue, useSpring, useTransform } from "framer-mo
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState, type PointerEvent } from "react";
 
+import { env } from "@/config/env";
 import { Status } from "@/components/ui/status";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn, truncateAddress } from "@/lib/utils";
@@ -36,16 +37,21 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
   const [interactive, setInteractive] = useState(false);
 
   /*
-   * Where the QR points.
+   * Where the QR points, and whether that address can leave this machine.
    *
-   * Built from the running origin rather than a configured base URL, so a code scanned from
-   * a laptop screen opens the same deployment the reader is looking at. A hardcoded
-   * production URL would send someone verifying a local demo to a server that has never
-   * heard of the identity.
+   * This was built from `location.origin` alone, which is correct in production and wrong
+   * for the one case a QR exists for. A code is scanned by a *different* device, and in
+   * development the origin is `http://localhost:5173` — on a phone that resolves to the
+   * phone, so the scan ends in "connection refused". The reasoning behind the original was
+   * about scanning from the same laptop, which is not why anyone prints a QR.
+   *
+   * VITE_PUBLIC_APP_URL overrides it with an address other devices can reach — a LAN IP in
+   * development, the real host in production. Absent that, the origin is still used, but
+   * the card says the link is local rather than printing a code that quietly fails.
    */
-  const verifyUrl = session.did
-    ? `${globalThis.location?.origin ?? ""}/verify?did=${session.did}`
-    : null;
+  const origin = env.VITE_PUBLIC_APP_URL || (globalThis.location?.origin ?? "");
+  const verifyUrl = session.did ? `${origin}/verify?did=${session.did}` : null;
+  const reachableOffDevice = !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/i.test(origin);
 
   // Raw pointer position, -0.5..0.5 on each axis.
   const px = useMotionValue(0);
@@ -181,6 +187,23 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
                 level="Q"
                 title={`Scan to verify ${session.did}`}
               />
+
+              {/*
+                Said plainly, where it matters.
+                
+                A QR that cannot be scanned from a phone is worse than no QR: it looks like
+                a working feature and fails at the moment of use, in front of whoever was
+                being shown it. Better to state the limit on the card than to let the
+                scanner discover it.
+              */}
+              {!reachableOffDevice && (
+                <p
+                  className="mt-2 max-w-[7rem] text-2xs leading-snug text-fg-faint"
+                  data-testid="qr-local-only"
+                >
+                  Local address — set VITE_PUBLIC_APP_URL to scan from a phone.
+                </p>
+              )}
             </fm.div>
           )}
         </div>
