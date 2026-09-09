@@ -30,7 +30,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        primary: "bg-fg text-base hover:bg-fg/88 active:bg-fg/80",
+        primary: "bg-fg text-canvas hover:bg-fg/88 active:bg-fg/80",
         outline: "border border-line-strong text-fg hover:bg-hover hover:border-fg-faint",
         ghost: "text-fg-muted hover:text-fg hover:bg-hover",
         danger: "border border-revoked/45 text-revoked hover:bg-revoked/10",

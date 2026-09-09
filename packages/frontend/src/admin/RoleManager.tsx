@@ -97,7 +97,7 @@ export function RoleManager() {
             onChange={(event) => setDraft(event.target.value)}
             placeholder="0x…"
             spellCheck={false}
-            className="w-full rounded border border-line bg-base px-3 py-2 font-mono text-sm"
+            className="w-full rounded border border-line bg-canvas px-3 py-2 font-mono text-sm"
             data-testid="role-lookup-input"
           />
         </label>

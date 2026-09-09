@@ -182,7 +182,7 @@ export function Verify() {
             rows={3}
             spellCheck={false}
             placeholder="0x… or eyJhbGciOi…"
-            className="w-full resize-y rounded border border-line bg-base px-3 py-2.5 font-mono text-sm leading-relaxed"
+            className="w-full resize-y rounded border border-line bg-canvas px-3 py-2.5 font-mono text-sm leading-relaxed"
             data-testid="verify-input"
           />
         </label>

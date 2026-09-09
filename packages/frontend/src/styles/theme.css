@@ -25,7 +25,7 @@
 
 @theme {
   /* ---- surfaces. Neutral, no blue cast: a cool grey reads as "tech product". ---- */
-  --color-base: #0b0b0c;
+  --color-canvas: #0b0b0c;
   --color-surface: #100f11;
   --color-raised: #16161a;
   --color-hover: #1d1d22;
@@ -125,7 +125,7 @@
 
   body {
     margin: 0;
-    background: var(--color-base);
+    background: var(--color-canvas);
     color: var(--color-fg);
     font-family: var(--font-sans);
     font-size: 15px;

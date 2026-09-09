@@ -49,12 +49,12 @@ export default function App() {
       */}
       <a
         href="#main"
-        className="absolute left-3 top-0 z-100 -translate-y-full rounded-b bg-fg px-4 py-2 text-sm font-medium text-base transition-transform focus:translate-y-0"
+        className="absolute left-3 top-0 z-100 -translate-y-full rounded-b bg-fg px-4 py-2 text-sm font-medium text-canvas transition-transform focus:translate-y-0"
       >
         Skip to content
       </a>
 
-      <header className="sticky top-0 z-40 border-b border-line bg-base/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-line bg-canvas/85 backdrop-blur-md">
         <div className="shell flex min-h-15 flex-wrap items-center gap-x-6 gap-y-2 py-2.5">
           <NavLink
             to="/"
@@ -66,7 +66,7 @@ export default function App() {
               className="relative size-4 shrink-0 rounded-[2px] border border-fg-muted"
               aria-hidden="true"
             >
-              <span className="absolute -bottom-1 -right-1 size-2.5 rounded-[1px] border border-fg-faint bg-base" />
+              <span className="absolute -bottom-1 -right-1 size-2.5 rounded-[1px] border border-fg-faint bg-canvas" />
             </span>
             TrustChain
           </NavLink>

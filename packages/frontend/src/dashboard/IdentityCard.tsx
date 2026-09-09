@@ -144,7 +144,7 @@ export function IdentityCard({ session, className }: IdentityCardProps) {
           */}
           {session.did && (
             <fm.div
-              className="shrink-0 rounded border border-line bg-base p-2.5"
+              className="shrink-0 rounded border border-line bg-canvas p-2.5"
               initial={motion.reduced ? { opacity: 0 } : { opacity: 0, scale: 0.94 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={motion.transition("base")}

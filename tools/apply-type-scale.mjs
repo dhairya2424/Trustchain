@@ -105,3 +105,41 @@ if (check) {
 } else {
   console.log(`type scale: ${replacements} replacement(s) across ${changedFiles} file(s)`);
 }
+
+/*
+ * Second gate: a colour token must never share its name with a font-size token.
+ *
+ * Tailwind derives `text-<name>` from both the `--color-*` and `--text-*` namespaces, and
+ * where a name exists in both, the font size wins silently. This is not hypothetical — the
+ * type scale added `--text-base` alongside the existing `--color-base`, and every
+ * `bg-fg text-base` button (the primary button, and the skip link) lost its dark foreground
+ * and rendered as near-white text on a near-white fill. Nothing caught it: unit tests query
+ * by role, axe's contrast rule is disabled under jsdom, and Playwright asserts presence
+ * rather than colour. It took looking at a screenshot.
+ *
+ * The colour token was renamed to `--color-canvas`. This check is what stops the next one.
+ */
+const theme = readFileSync(path.join(root, "styles", "theme.css"), "utf8");
+
+const tokenNames = (prefix) =>
+  new Set(
+    [...theme.matchAll(new RegExp(`--${prefix}-([a-z0-9-]+?):`, "g"))]
+      .map((match) => match[1])
+      // `--text-base--line-height` is a modifier on `base`, not a token in its own right.
+      .filter((name) => !name.includes("--")),
+  );
+
+const fontSizes = tokenNames("text");
+const collisions = [...tokenNames("color")].filter((name) => fontSizes.has(name));
+
+if (collisions.length > 0) {
+  console.error(
+    `theme: ${collisions.length} name(s) defined as both a colour and a font size: ` +
+      `${collisions.join(", ")}.\n` +
+      "Tailwind resolves `text-<name>` to the font size and drops the colour with no warning. " +
+      "Rename the colour token.",
+  );
+  process.exit(1);
+}
+
+if (check) console.log("theme: no colour/font-size token collisions");

@@ -198,7 +198,7 @@ export function MintWizard() {
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     maxLength={120}
-                    className="w-full rounded border border-line bg-base px-3 py-2 text-base"
+                    className="w-full rounded border border-line bg-canvas px-3 py-2 text-base"
                     data-testid="mint-name"
                   />
                 </label>
@@ -210,7 +210,7 @@ export function MintWizard() {
                     onChange={(event) => setDescription(event.target.value)}
                     rows={4}
                     maxLength={2000}
-                    className="w-full resize-y rounded border border-line bg-base px-3 py-2 text-base"
+                    className="w-full resize-y rounded border border-line bg-canvas px-3 py-2 text-base"
                     data-testid="mint-description"
                   />
                 </label>

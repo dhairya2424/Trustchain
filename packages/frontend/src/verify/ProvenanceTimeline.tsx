@@ -95,7 +95,7 @@ export function ProvenanceTimeline({ nodes }: { nodes: TimelineNode[] }) {
           >
             <span
               className={cn(
-                "relative z-10 mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border bg-base",
+                "relative z-10 mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border bg-canvas",
                 TONE_RING[node.tone],
               )}
             >

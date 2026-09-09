@@ -102,7 +102,7 @@ function AssetArtwork({ cid }: { cid?: string }) {
   if (!cid) {
     return (
       <div
-        className="grid aspect-4/3 w-full place-items-center rounded border border-dashed border-line bg-base px-4 text-center"
+        className="grid aspect-4/3 w-full place-items-center rounded border border-dashed border-line bg-canvas px-4 text-center"
         data-testid="asset-artwork-absent"
       >
         <p className="text-2xs leading-snug text-fg-faint">
@@ -115,7 +115,7 @@ function AssetArtwork({ cid }: { cid?: string }) {
   }
 
   return (
-    <div className="relative aspect-4/3 w-full overflow-hidden rounded bg-base">
+    <div className="relative aspect-4/3 w-full overflow-hidden rounded bg-canvas">
       {state === "loading" && <Skeleton className="absolute inset-0" />}
 
       <img
@@ -129,7 +129,7 @@ function AssetArtwork({ cid }: { cid?: string }) {
       />
 
       {state === "failed" && (
-        <div className="absolute inset-0 grid place-items-center bg-base">
+        <div className="absolute inset-0 grid place-items-center bg-canvas">
           <Status tone="neutral">Image unavailable</Status>
         </div>
       )}

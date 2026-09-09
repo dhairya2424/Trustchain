@@ -56,3 +56,6 @@ infra/relayer/config/config.json
 test-results/
 playwright-report/
 blob-report/
+
+# Screenshots from tools/drive-app.mjs — build output, regenerated on every run.
+.screenshots/

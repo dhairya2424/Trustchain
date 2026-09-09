@@ -126,7 +126,7 @@ export function ConnectModal({ open, onClose }: ConnectModalProps) {
                     type="button"
                     onClick={() => onPick(connector)}
                     data-testid={`wallet-option-${connector.id}`}
-                    className="group flex min-h-14 w-full items-center justify-between gap-3 rounded border border-line bg-base px-4 text-base font-medium text-fg transition-colors hover:border-line-strong hover:bg-hover"
+                    className="group flex min-h-14 w-full items-center justify-between gap-3 rounded border border-line bg-canvas px-4 text-base font-medium text-fg transition-colors hover:border-line-strong hover:bg-hover"
                   >
                     {connectorLabel(connector)}
                     <ArrowRight

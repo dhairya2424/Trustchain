@@ -308,7 +308,7 @@ export function AuditLog() {
 }
 
 const inputClass =
-  "w-full rounded border border-line bg-base px-2.5 py-2 text-sm text-fg placeholder:text-fg-faint";
+  "w-full rounded border border-line bg-canvas px-2.5 py-2 text-sm text-fg placeholder:text-fg-faint";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

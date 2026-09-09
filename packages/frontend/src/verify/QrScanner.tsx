@@ -125,7 +125,7 @@ export function QrScanner({ onResult, onClose }: QrScannerProps) {
         <div className="relative mt-4 overflow-hidden rounded border border-line">
           <video
             ref={videoRef}
-            className="aspect-video w-full bg-base object-cover"
+            className="aspect-video w-full bg-canvas object-cover"
             muted
             playsInline
           />
