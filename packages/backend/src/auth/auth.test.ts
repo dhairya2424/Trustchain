@@ -82,7 +82,7 @@ async function buildHarness(overrides: { rateLimitPoints?: number } = {}): Promi
     nonces,
     tokens,
     roles,
-    siwe: new SiweVerifier({ domain: DOMAIN }),
+    siwe: new SiweVerifier({ domains: [DOMAIN] }),
     turnstile,
     failures,
     config: {

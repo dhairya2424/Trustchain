@@ -35,6 +35,20 @@ const BY_CODE: Record<string, HumanError> = {
     message: "You are not signed in.",
     action: "Connect your wallet and sign in to continue.",
   },
+  // ---- sign-in
+  field_validation_failed: {
+    message: "The signature was bound to a different address bar than this one.",
+    action:
+      "Sign-In With Ethereum ties a signature to the exact domain your wallet displayed, so open the app at the address the server expects and sign in again.",
+  },
+  malformed_siwe_message: {
+    message: "The sign-in message could not be read.",
+    action: "Reload the page and try again.",
+  },
+  signature_mismatch: {
+    message: "The signature did not match the address that sent it.",
+    action: "Make sure your wallet is on the account you meant to use.",
+  },
   forbidden: {
     message: "Your identity does not hold the permission this action needs.",
     action: "An administrator can grant it — the contract would refuse this too.",

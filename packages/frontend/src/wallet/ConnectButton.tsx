@@ -112,13 +112,23 @@ export function ConnectButton() {
           <span className="font-mono tabular text-sm">{truncateAddress(address)}</span>
         </Button>
 
+        {/*
+          The reason, and what to do about it.
+
+          This showed only the headline, and for an unmapped failure that headline was
+          "Something went wrong." — which is what a domain-binding refusal looked like: a
+          precise, correct, actionable rejection reported as a shrug. The recovery line is
+          the half that tells somebody what to change.
+        */}
         {signIn.isError && (
-          <p
-            className="w-full text-right text-xs text-revoked lg:w-auto"
-            data-testid="sign-in-error"
-          >
-            {humanError(signIn.error).message}
-          </p>
+          <div className="w-full text-right lg:w-auto lg:max-w-[22rem]" data-testid="sign-in-error">
+            <p className="text-xs text-revoked">{humanError(signIn.error).message}</p>
+            {humanError(signIn.error).action && (
+              <p className="mt-0.5 text-2xs leading-snug text-fg-faint">
+                {humanError(signIn.error).action}
+              </p>
+            )}
+          </div>
         )}
       </div>
     );

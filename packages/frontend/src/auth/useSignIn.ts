@@ -126,9 +126,21 @@ export function useSignIn() {
     },
 
     onSuccess: (result) => {
-      // Seed rather than only invalidate: the dashboard reads this immediately, and a
-      // refetch round trip would show the signed-out state for a beat after success.
+      /*
+       * Seed for immediacy, then confirm for truth.
+       *
+       * Seeding alone was a quiet lie. `/auth/verify` answering 200 does not mean the
+       * browser *kept* the cookie it set — a `Domain` the serving host does not match is
+       * dropped silently — so the cache would hold an identity while every later request
+       * went out anonymous. That is how a dashboard ends up showing your address in the
+       * header above panels that all say "unauthenticated".
+       *
+       * The refetch asks the server who it thinks we are, using the cookie. If the cookie
+       * did not survive, that 401s and the UI corrects itself to signed-out instead of
+       * insisting on a session it never had.
+       */
       queryClient.setQueryData(queryKeys.session, result);
+      void queryClient.refetchQueries({ queryKey: queryKeys.session });
       void queryClient.invalidateQueries({ queryKey: ["audit"] });
     },
   });

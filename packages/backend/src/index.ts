@@ -80,7 +80,12 @@ function buildAuth(env: Env, selector: NetworkSelector | undefined): Platform {
       // switch — a failure that reads as a permissions problem rather than a stale config.
       roles: selector ? new SelectedRoleReader(selector) : roles,
       siwe: new SiweVerifier({
-        domain: env.SIWE_DOMAIN,
+        // Comma-separated, like CORS_ORIGIN. Each entry is still matched exactly; the list
+        // exists because the app is legitimately reachable at more than one origin in
+        // development, and a signature is bound to the one the wallet displayed.
+        domains: env.SIWE_DOMAIN.split(",")
+          .map((domain) => domain.trim())
+          .filter(Boolean),
         // Contract wallets cannot be verified locally; viem's client-backed check
         // handles ERC-1271 for them.
         erc1271: async (address, message, signature) =>

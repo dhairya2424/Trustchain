@@ -167,11 +167,14 @@ await page.screenshot({ path: ".screenshots/browser-signin.png", fullPage: true 
 
 console.log("\n4. The session is real, not just local state");
 
-const cookies = await page.context().cookies();
+// Scoped to the API's own origin. Asking the context for every cookie it holds returns
+// the ones belonging to pages it has visited, and the session cookie belongs to the API —
+// a different origin from the app whenever the two are on different hosts.
+const cookies = await page.context().cookies(API);
 check(
   "a session cookie was set by the API",
   cookies.some((c) => c.name.includes("trustchain") || c.name.includes("session")),
-  cookies.map((c) => c.name).join(", "),
+  cookies.length ? cookies.map((c) => c.name).join(", ") : "no cookies for " + API,
 );
 
 check("no console errors", errors.length === 0, errors.join(" | "));

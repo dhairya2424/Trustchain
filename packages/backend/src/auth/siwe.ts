@@ -28,7 +28,21 @@ export type Erc1271Checker = (
 export class SiweVerifier {
   constructor(
     private readonly options: {
-      domain: string;
+      /**
+       * Every domain a signature may legitimately be bound to.
+       *
+       * A list rather than one string, for the same reason CORS keeps a list: the app is
+       * legitimately served on more than one origin during development — localhost for the
+       * machine running it, a LAN address for a phone — and a signature is bound to the
+       * domain the wallet actually displayed. With a single value, signing in from the
+       * other origin fails domain binding and returns 401, which reads as a broken login
+       * rather than as the deliberate protection it is.
+       *
+       * This does not loosen the check. Each entry is matched exactly, and a domain absent
+       * from the list is still refused; that refusal is what stops a signature farmed by a
+       * phishing site from working here.
+       */
+      domains: readonly string[];
       erc1271?: Erc1271Checker;
       /** Overridable for deterministic expiry tests. */
       now?: () => Date;
@@ -48,12 +62,15 @@ export class SiweVerifier {
     }
 
     // Checks domain binding plus expirationTime / notBefore. Domain binding is what stops
-    // a signature farmed by a phishing site from working here.
-    const fieldsValid = validateSiweMessage({
-      message: fields,
-      domain: this.options.domain,
-      time: this.options.now?.(),
-    });
+    // a signature farmed by a phishing site from working here, so a message must match one
+    // of the configured domains exactly — any of them, but nothing else.
+    const fieldsValid = this.options.domains.some((domain) =>
+      validateSiweMessage({
+        message: fields,
+        domain,
+        time: this.options.now?.(),
+      }),
+    );
     if (!fieldsValid) {
       return { ok: false, reason: "field_validation_failed" };
     }

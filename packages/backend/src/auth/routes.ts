@@ -61,7 +61,9 @@ function cookieOptions(deps: AuthDependencies, maxAgeSeconds: number, path = "/"
     httpOnly: true,
     secure: deps.config.secureCookies,
     sameSite: "strict",
-    domain: deps.config.cookieDomain,
+    // Omitted when unset, which makes the cookie host-only. Sending `Domain` with a value
+    // the serving host does not match causes the browser to drop the cookie entirely.
+    ...(deps.config.cookieDomain ? { domain: deps.config.cookieDomain } : {}),
     path,
     maxAge: maxAgeSeconds * 1000,
   };

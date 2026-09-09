@@ -42,7 +42,16 @@ export const envSchema = z.object({
   JWT_PUBLIC_KEY: z.string().min(1),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   SESSION_COOKIE_NAME: z.string().min(1).default("trustchain_session"),
-  SESSION_COOKIE_DOMAIN: z.string().min(1),
+  /**
+   * Cookie `Domain`, or empty for a host-only cookie.
+   *
+   * Empty is the safer default and the one that works everywhere: the cookie binds to
+   * whichever host served it. Pinned to `localhost`, it is silently rejected when the app is
+   * reached at a LAN address — the browser stores nothing, sign-in appears to succeed, and
+   * every request afterwards is anonymous. Set it only to deliberately share a session
+   * across subdomains.
+   */
+  SESSION_COOKIE_DOMAIN: z.string().default(""),
 
   SIWE_DOMAIN: z.string().min(1),
   SIWE_ORIGIN: z.string().url(),
