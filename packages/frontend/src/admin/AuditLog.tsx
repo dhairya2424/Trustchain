@@ -4,7 +4,13 @@ import { AnimatePresence, motion as fm } from "framer-motion";
 import { useMemo, useRef, useState } from "react";
 
 import { ApiError, apiGet } from "@/api/client";
-import { ACTION_LABELS, actionLabel, type AuditEntry, type AuditPage } from "@/api/queries";
+import {
+  ACTION_LABELS,
+  actionLabel,
+  useNetwork,
+  type AuditEntry,
+  type AuditPage,
+} from "@/api/queries";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
@@ -54,6 +60,9 @@ function toParams(filters: Filters, limit: number): string {
 
 export function AuditLog() {
   const motion = useMotion();
+  // Which chain these entries are on, and therefore whether they can be linked to.
+  const network = useNetwork();
+  const explorerUrl = network.data?.active?.explorerUrl ?? null;
   const [draft, setDraft] = useState<Filters>(EMPTY);
   const [applied, setApplied] = useState<Filters>(EMPTY);
   const [live, setLive] = useState(false);
@@ -289,9 +298,34 @@ export function AuditLog() {
                   <Detail term="Block">{selected.blockNumber}</Detail>
 
                   <Detail term="Transaction">
-                    <span title={selected.transactionHash}>
-                      {truncateAddress(selected.transactionHash)}
-                    </span>
+                    {/*
+                     * A link only where one can actually be followed.
+                     *
+                     * On a public network this is the whole point: an auditor stops taking
+                     * our word for the entry and reads the transaction themselves. On a
+                     * local chain there is no explorer, and rendering a dead link would
+                     * imply an independence that does not exist there — so the hash is
+                     * shown plainly instead.
+                     */}
+                    {explorerUrl ? (
+                      <a
+                        className="underline underline-offset-4 transition-colors hover:text-fg"
+                        href={`${explorerUrl}/tx/${selected.transactionHash}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        title={selected.transactionHash}
+                      >
+                        {truncateAddress(selected.transactionHash)}
+                        <span aria-hidden="true"> ↗</span>
+                        <span className="sr-only">
+                          — view on the block explorer (opens in a new tab)
+                        </span>
+                      </a>
+                    ) : (
+                      <span title={selected.transactionHash}>
+                        {truncateAddress(selected.transactionHash)}
+                      </span>
+                    )}
                   </Detail>
 
                   <Detail term="Occurred at">
