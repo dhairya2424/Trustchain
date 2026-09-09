@@ -2,7 +2,7 @@
   "name": "sih-26",
   "version": "1.0.0",
   "private": true,
-  "description": "TrustChain \u2014 decentralized identity, on-chain RBAC and NFT-based asset ownership",
+  "description": "TrustChain — decentralized identity, on-chain RBAC and NFT-based asset ownership",
   "license": "MIT",
   "workspaces": [
     "packages/*"
@@ -21,7 +21,7 @@
     "dev": "turbo run dev --parallel",
     "dev:env": "node tools/gen-dev-env.mjs",
     "diagrams": "npx -y @mermaid-js/mermaid-cli@11 -i docs/ARCHITECTURE.mmd -o docs/ARCHITECTURE.png -w 2400 -s 2 -b white && npx -y @mermaid-js/mermaid-cli@11 -i docs/WORKFLOW.mmd -o docs/WORKFLOW.png -w 2400 -s 2 -b white",
-    "e2e": "node tools/e2e-flow.mjs",
+    "e2e": "playwright test",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,sol,yml,yaml}\"",
     "lint": "turbo run lint",
@@ -43,7 +43,8 @@
     "seed:amoy": "npm run seed:amoy --workspace @trustchain/contracts",
     "test": "turbo run test",
     "test:tools": "vitest run",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "e2e:install": "playwright install --with-deps chromium"
   },
   "comments": {
     "overrides": "Patched transitive dependencies pulled in by the Hardhat 2 toolchain. npm's own fix for each of these is a major upgrade to Hardhat 3, which is a config-format rewrite we are not taking mid-build. Each pin below stays inside the dependant's expected major, so the toolchain API is unchanged. Revisit when migrating to Hardhat 3."
@@ -60,6 +61,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",

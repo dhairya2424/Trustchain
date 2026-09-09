@@ -22,8 +22,12 @@ describe("App routing", () => {
   });
 
   it("serves the dashboard", () => {
+    // With no API stubbed, the session query never resolves, so this lands on the loading
+    // state — which is the right thing to assert here: the route resolves to the dashboard
+    // and reserves its layout while waiting. Its loaded states are covered in
+    // routes/Dashboard.test.tsx.
     renderWithProviders(<App />, { ...options, route: "/dashboard" });
-    expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-skeleton")).toBeInTheDocument();
   });
 
   it("serves the admin console", () => {

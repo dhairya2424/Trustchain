@@ -42,6 +42,41 @@ jobs:
       - name: Unit tests
         run: npm run test
 
+  e2e:
+    name: browser end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Chromium only. The suite asserts layout, focus order and layout shift, none of
+      # which differ enough between engines to justify tripling the run time on every push;
+      # cross-browser belongs in a scheduled job if it is ever wanted.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # No backend, no chain, no database. Every API call is stubbed at the network
+      # boundary, so this job needs nothing but a browser — and a failure here is
+      # unambiguously a frontend failure rather than an environment one. The claim that the
+      # backend behaves correctly is made by tools/e2e-*.mjs against real infrastructure.
+      - name: Playwright
+        run: npm run e2e
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   contracts:
     name: contracts · coverage · fuzz · slither
     runs-on: ubuntu-latest

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useSignTypedData } from "wagmi";
 
 import { ApiError, apiGet } from "@/api/client";
+import { humanErrorText } from "@/api/errors";
 import { forwardSigned, toSignable, type PreparedTypedData } from "@/api/forward";
 import { useSession, type Session } from "@/api/queries";
 import { Button } from "@/components/ui/button";
@@ -176,7 +177,7 @@ function SubjectPanel({
         throw new Error(
           prepared.status === 403
             ? "Changing a role needs the MANAGE_ROLES permission on your own identity."
-            : code.replace(/_/g, " "),
+            : humanErrorText(code),
         );
       }
 

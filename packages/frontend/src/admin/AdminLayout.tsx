@@ -123,9 +123,15 @@ export function AdminLayout() {
           </p>
         </nav>
 
-        <main className="min-w-0">
+        {/*
+          A div, not a <main>. The shell already owns the document's single main landmark,
+          and nesting a second one leaves a screen-reader user navigating by landmark with
+          two "main" regions and no way to tell which holds the content. axe flags this as
+          landmark-no-duplicate-main; it was a real defect, not a lint preference.
+        */}
+        <div className="min-w-0">
           <Outlet />
-        </main>
+        </div>
       </div>
     </div>
   );

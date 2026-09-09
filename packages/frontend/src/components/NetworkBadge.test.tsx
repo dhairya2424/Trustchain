@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
+
+import { renderWithProviders } from "@/test/harness";
 
 import { NetworkBadge } from "./NetworkBadge";
 
@@ -31,14 +33,23 @@ const HARDHAT = {
   isFallback: true,
 };
 
+/**
+ * A real Response, not a duck-typed stub.
+ *
+ * The badge reads through the shared API client now, which checks `response.ok` and parses
+ * JSON the normal way — a hand-rolled object that happens to have those fields drifts from
+ * what fetch actually returns.
+ */
 function mockNetwork(active: unknown, status = 200) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => ({
-      ok: status === 200,
-      status,
-      json: async () => ({ active }),
-    })),
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ active }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+    ),
   );
 }
 
@@ -55,7 +66,7 @@ afterEach(() => {
 describe("NetworkBadge", () => {
   it("shows the Amoy label and its verifiability when Amoy is active", async () => {
     mockNetwork(AMOY);
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() =>
       expect(screen.getByTestId("network-badge")).toHaveAttribute("data-network", "amoy"),
@@ -68,7 +79,7 @@ describe("NetworkBadge", () => {
 
   it("does not show a fallback notice when running on the primary", async () => {
     mockNetwork(AMOY);
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() => expect(screen.getByTestId("network-badge")).toBeInTheDocument());
     expect(screen.queryByTestId("fallback-notice")).not.toBeInTheDocument();
@@ -76,7 +87,7 @@ describe("NetworkBadge", () => {
 
   it("shows the Hardhat label when the fallback is active", async () => {
     mockNetwork(HARDHAT);
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() =>
       expect(screen.getByTestId("network-badge")).toHaveAttribute("data-network", "hardhat"),
@@ -90,7 +101,7 @@ describe("NetworkBadge", () => {
   /** The requirement, stated directly: never imply Amoy when running locally. */
   it("never shows the Amoy label while the fallback is active", async () => {
     mockNetwork(HARDHAT);
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() => expect(screen.getByTestId("network-badge")).toBeInTheDocument());
     expect(screen.getByTestId("network-badge")).not.toHaveTextContent("POLYGON AMOY");
@@ -98,7 +109,7 @@ describe("NetworkBadge", () => {
 
   it("says plainly that a fallback record is not publicly verifiable", async () => {
     mockNetwork(HARDHAT);
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() => expect(screen.getByTestId("fallback-notice")).toBeInTheDocument());
     expect(screen.getByTestId("fallback-notice")).toHaveTextContent("not publicly verifiable");
@@ -106,7 +117,7 @@ describe("NetworkBadge", () => {
 
   it("reports that no network is available rather than guessing, on 503", async () => {
     mockNetwork(null, 503);
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() =>
       expect(screen.getByTestId("network-badge")).toHaveAttribute("data-network", "unavailable"),
@@ -123,7 +134,7 @@ describe("NetworkBadge", () => {
         throw new Error("ECONNREFUSED");
       }),
     );
-    render(<NetworkBadge />);
+    renderWithProviders(<NetworkBadge variant="full" />);
 
     await waitFor(() =>
       expect(screen.getByTestId("network-badge")).toHaveAttribute("data-network", "unavailable"),

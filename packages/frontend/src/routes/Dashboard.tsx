@@ -5,6 +5,7 @@ import { ApiError } from "@/api/client";
 import { useActivity, useSession, type AuditEntry } from "@/api/queries";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Skeleton } from "@/components/ui/skeleton";
 import { NetworkBadge } from "@/components/NetworkBadge";
 import { Status } from "@/components/ui/status";
 import { ActivityFeed } from "@/dashboard/ActivityFeed";
@@ -61,14 +62,7 @@ export function Dashboard() {
     );
   }
 
-  if (session.isLoading || !session.data) {
-    return (
-      <section className={`${SHELL} py-16`} aria-busy="true">
-        <h1 className="text-title">Dashboard</h1>
-        <p className="mt-3 text-[14px] text-fg-muted">Reading your session…</p>
-      </section>
-    );
-  }
+  if (session.isLoading || !session.data) return <DashboardSkeleton />;
 
   const me = session.data;
   const auditError = activity.error instanceof ApiError ? activity.error : null;
@@ -170,6 +164,65 @@ export function Dashboard() {
           <ActivityFeed entries={entries} isLoading={activity.isLoading} error={auditError} />
         </div>
       </section>
+    </section>
+  );
+}
+
+/**
+ * The loading state, shaped like the loaded page.
+ *
+ * This replaced a one-line "Reading your session…", which measured **0.64 CLS** in the
+ * browser — six times Google's "good" threshold. The cause was structural rather than
+ * cosmetic: a single line of text occupies almost no height, so when the real dashboard
+ * arrived it pushed the entire viewport down at once. Anything the reader had started
+ * reading moved out from under them.
+ *
+ * So every block below reserves roughly the height its real counterpart will occupy. It is
+ * approximate by nature — the activity feed's length is not known until it arrives — but
+ * the difference between "approximately right" and "one line" is the difference between a
+ * settle and a jolt.
+ *
+ * Only a browser can catch this; jsdom computes no layout, so the regression test for it
+ * lives in the Playwright suite.
+ */
+function DashboardSkeleton() {
+  return (
+    <section className={`${SHELL} py-12`} aria-busy="true" data-testid="dashboard-skeleton">
+      <div className="border-b border-line pb-6">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="mt-3 h-8 w-48" />
+      </div>
+
+      <div className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-4">
+        {[0, 1, 2, 3].map((stat) => (
+          <div key={stat} className="border-l border-line pl-4">
+            <Skeleton className="h-7 w-12" />
+            <Skeleton className="mt-2 h-3 w-20" />
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <Skeleton className="h-64 w-full rounded-lg" />
+        <div>
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="mt-4 h-16 w-52 rounded-lg" />
+        </div>
+      </div>
+
+      <div className="mt-12">
+        <Skeleton className="h-3 w-24" />
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((card) => (
+            <Skeleton key={card} className="h-56 w-full rounded-lg" />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-12">
+        <Skeleton className="h-3 w-20" />
+        <Skeleton className="mt-4 h-64 w-full rounded-lg" />
+      </div>
     </section>
   );
 }

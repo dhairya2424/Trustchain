@@ -96,23 +96,30 @@ export function renderWithProviders(ui: ReactElement, options: HarnessOptions = 
   });
 
   function Wrapper({ children }: { children: ReactNode }) {
-    // ToastProvider is inside MotionProvider for the same reason it is in the real tree:
-    // toasts animate, so they need the resolved motion scheme.
-    const withMotion = (
-      <MemoryRouter initialEntries={[route]}>
-        <MotionProvider>
-          <ToastProvider>{children}</ToastProvider>
-        </MotionProvider>
-      </MemoryRouter>
+    /*
+     * The query client is always provided; only wagmi is optional.
+     *
+     * Data fetching and wallets are unrelated concerns, and tying them together here meant
+     * any component that reads a query but needs no wallet — the network badge, for one —
+     * failed with "No QueryClient set" unless the test opted into wagmi it did not want.
+     * A harness should not make a component look broken for asking a reasonable thing.
+     *
+     * ToastProvider sits inside MotionProvider for the same reason it does in the real
+     * tree: toasts animate, so they need the resolved motion scheme.
+     */
+    const inner = (
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={[route]}>
+          <MotionProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </MotionProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
     );
 
-    if (!config) return withMotion;
+    if (!config) return inner;
 
-    return (
-      <WagmiProvider config={config}>
-        <QueryClientProvider client={queryClient}>{withMotion}</QueryClientProvider>
-      </WagmiProvider>
-    );
+    return <WagmiProvider config={config}>{inner}</WagmiProvider>;
   }
 
   return render(ui, { wrapper: Wrapper, ...rest });

@@ -261,10 +261,17 @@ export function MintWizard() {
                     </div>
                   )}
 
+                  {/*
+                    Visually hidden but still focusable, so it needs its own accessible name
+                    — axe flags this as a critical "label" violation, and in practice a
+                    screen-reader user tabbing here would hear nothing at all. The visible
+                    Browse button drives the same input via a click.
+                  */}
                   <input
                     ref={inputRef}
                     type="file"
                     accept="image/*"
+                    aria-label="Choose an image file for this asset"
                     className="sr-only"
                     onChange={(event) => acceptFile(event.target.files?.[0])}
                     data-testid="file-input"

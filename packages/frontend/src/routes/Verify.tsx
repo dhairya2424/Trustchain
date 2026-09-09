@@ -7,6 +7,7 @@ import { NetworkBadge } from "@/components/NetworkBadge";
 import { Button } from "@/components/ui/button";
 import { Status } from "@/components/ui/status";
 import { env } from "@/config/env";
+import { humanErrorText } from "@/api/errors";
 import { useMotion } from "@/motion/MotionProvider";
 import { cn } from "@/lib/utils";
 import { ProvenanceTimeline } from "@/verify/ProvenanceTimeline";
@@ -98,15 +99,15 @@ export function Verify() {
       if (!res.ok) {
         const parsed = (await res.json().catch(() => ({}))) as { error?: string };
         setPhase("error");
-        setError(parsed.error ? parsed.error.replace(/_/g, " ") : `Request failed (${res.status})`);
+        setError(humanErrorText(parsed.error ?? `http_${res.status}`));
         return;
       }
 
       setResponse((await res.json()) as VerifyResponse);
       setPhase("done");
-    } catch {
+    } catch (caught) {
       setPhase("error");
-      setError("Cannot reach the API.");
+      setError(humanErrorText(caught));
     }
   }, []);
 

@@ -18,6 +18,31 @@
  */
 import { privateKeyToAccount } from "viem/accounts";
 import { createSiweMessage } from "viem/siwe";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+/**
+ * The subject DID, read from the seed rather than pasted in.
+ *
+ * Hard-coding the hash meant a literal 32-byte hex value in the source, which the secret
+ * scanner correctly cannot distinguish from a private key — and it would go stale the
+ * moment the seed changed.
+ */
+function seededDidHash(label) {
+  const seed = JSON.parse(
+    readFileSync(
+      path.join(repoRoot, "packages", "contracts", "deployments", "localhost.seed.json"),
+      "utf8",
+    ),
+  );
+
+  const entry = seed.seeded.find((s) => s.label === label);
+  if (!entry) throw new Error(`no seeded '${label}' identity — run npm run seed`);
+  return entry.didHash;
+}
 
 const API = process.env.E2E_API ?? "http://localhost:4000";
 const DOMAIN = "localhost:5173";
@@ -187,7 +212,7 @@ async function main() {
   const issued = await call("POST", "/credentials/issue", {
     jar: manager.jar,
     body: {
-      didHash: "0xd4e358b9eeaab7623a6c8ae7dd7bdf592819aea1936e5a6841b1e224a8521ccc",
+      didHash: seededDidHash("user"),
       credentialType: "ProofOfInspection",
       claims: { inspected: true, site: "Turbine 4" },
       expiresAt: Math.floor(Date.now() / 1000) + 86_400,

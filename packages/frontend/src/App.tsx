@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { NavLink, Route, Routes } from "react-router-dom";
 
 import { NetworkBadge } from "./components/NetworkBadge";
@@ -10,6 +11,8 @@ import { RoleManager } from "./admin/RoleManager";
 import { Verify } from "./routes/Verify";
 import { ConnectButton } from "./wallet/ConnectButton";
 import { cn } from "@/lib/utils";
+import { PageTransition } from "@/components/PageTransition";
+import { prefetchRoute } from "@/api/prefetch";
 
 /**
  * The app shell: a persistent header, the routed view, and a footer.
@@ -27,6 +30,17 @@ const NAV = [
 ] as const;
 
 export default function App() {
+  const queryClient = useQueryClient();
+
+  /*
+   * Warm the destination while the pointer is still travelling.
+   *
+   * Bound to focus as well as hover, so a keyboard user tabbing the nav gets the same head
+   * start a mouse user does — an optimisation that only helps people using a pointer is
+   * half an optimisation.
+   */
+  const warm = (path: string) => () => prefetchRoute(queryClient, path);
+
   return (
     <div className="flex min-h-screen flex-col">
       {/*
@@ -66,6 +80,8 @@ export default function App() {
                 key={item.to}
                 to={item.to}
                 end={item.end}
+                onMouseEnter={warm(item.to)}
+                onFocus={warm(item.to)}
                 className={({ isActive }) =>
                   cn(
                     "rounded px-3 py-1.5 text-[13.5px] transition-colors",
@@ -82,7 +98,12 @@ export default function App() {
           </nav>
 
           <div className="ml-auto flex items-center gap-3 sm:ml-0">
-            <span className="hidden lg:inline-flex">
+            {/*
+              A reserved width, so the header does not reflow when the badge resolves.
+              Without it the chip grows from "Checking network…" to the network name and
+              its verifiability, which rewraps the navigation and pushes the page down.
+            */}
+            <span className="hidden min-w-[19rem] justify-end lg:inline-flex">
               <NetworkBadge />
             </span>
             <ConnectButton />
@@ -91,32 +112,34 @@ export default function App() {
       </header>
 
       <main id="main" className="flex-1">
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          {/* Nested so the rail persists and only the console swaps. */}
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AuditLog />} />
-            <Route path="mint" element={<MintWizard />} />
-            <Route path="roles" element={<RoleManager />} />
-          </Route>
-          <Route path="/verify" element={<Verify />} />
-          {/*
+        <PageTransition>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            {/* Nested so the rail persists and only the console swaps. */}
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AuditLog />} />
+              <Route path="mint" element={<MintWizard />} />
+              <Route path="roles" element={<RoleManager />} />
+            </Route>
+            <Route path="/verify" element={<Verify />} />
+            {/*
             An unknown path is a real answer, not a redirect to the landing page — sending
             someone to the home page hides the fact that their link was wrong.
           */}
-          <Route
-            path="*"
-            element={
-              <section className="mx-auto w-full max-w-[1200px] px-4 py-20 sm:px-6">
-                <h1 className="text-title">Page not found</h1>
-                <p className="mt-3 max-w-[60ch] text-fg-muted">
-                  That route does not exist. Try the navigation above.
-                </p>
-              </section>
-            }
-          />
-        </Routes>
+            <Route
+              path="*"
+              element={
+                <section className="mx-auto w-full max-w-[1200px] px-4 py-20 sm:px-6">
+                  <h1 className="text-title">Page not found</h1>
+                  <p className="mt-3 max-w-[60ch] text-fg-muted">
+                    That route does not exist. Try the navigation above.
+                  </p>
+                </section>
+              }
+            />
+          </Routes>
+        </PageTransition>
       </main>
 
       <footer className="mt-auto border-t border-line">

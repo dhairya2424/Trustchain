@@ -51,3 +51,8 @@ infra/relayer/.env
 infra/relayer/config/keys/
 infra/relayer/config/config.json
 .relayer-build/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/

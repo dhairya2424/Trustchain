@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { humanErrorText } from "./errors";
 
 /**
  * The signing half of every attributed write.
@@ -99,26 +100,11 @@ export async function forwardSigned(
 
   if (!response.ok) {
     const code = typeof body.error === "string" ? body.error : `http_${response.status}`;
-    throw new ForwardError(response.status, code, describeForwardError(code));
+    // Through the shared table rather than a local switch, so every surface in the app
+    // says the same sentence about the same failure — and so an unrecognised code becomes a
+    // plain sentence rather than leaking `actor_mismatch` into the interface.
+    throw new ForwardError(response.status, code, humanErrorText(code));
   }
 
   return body as ForwardResult;
-}
-
-/** Turns the API's error codes into something a person can act on. */
-function describeForwardError(code: string): string {
-  switch (code) {
-    case "actor_mismatch":
-      return "The signature is for a different account than the one signed in.";
-    case "invalid_signature":
-      return "The signature did not verify against this request.";
-    case "target_not_allowed":
-      return "That contract is not on the active network's allowlist.";
-    case "request_expired":
-      return "The request expired before it was submitted. Try again.";
-    case "no_usable_network":
-      return "No blockchain network is currently usable, so nothing can be submitted.";
-    default:
-      return code.replace(/_/g, " ");
-  }
 }
