@@ -218,6 +218,24 @@ function didHashFor(address) {
 async function main() {
   console.log(`TrustChain P2.6 exit check\napi: ${API}\n`);
 
+  /*
+   * Same guard as the other local-chain tools: this signs in with published Hardhat keys and
+   * declares chain 31337, so against an Amoy-bound backend every privileged step returns 403
+   * — correct RBAC, mistakable for a broken tool.
+   */
+  const network = await call("GET", "/network");
+  const active = network.body?.active;
+  if (active && active.chainId !== 31337) {
+    console.error(
+      `This tool targets the local Hardhat chain (31337) with published test keys.\n` +
+        `The backend is on ${active.label} (${active.chainId}).\n\n` +
+        `For that network, run instead:\n` +
+        `  node tools/e2e-amoy.mjs\n` +
+        `  node tools/e2e-gaps.mjs\n`,
+    );
+    process.exit(1);
+  }
+
   const health = await call("GET", "/health");
   if (health.status !== 200) {
     console.error(`backend is not answering at ${API} — start it first`);

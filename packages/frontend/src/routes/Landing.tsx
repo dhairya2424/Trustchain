@@ -69,44 +69,58 @@ export function Landing() {
   const flowRef = useScrollReveal<HTMLDivElement>({ y: 20, childSelector: ".flow-row" });
 
   return (
-    <div className="relative">
-      <ParticleNetwork />
+    <div>
+      {/*
+        The field belongs to the hero, and only to the hero.
 
-      <section className={`${SHELL} relative flex min-h-[78vh] items-center py-20`}>
-        <fm.div
-          className="w-full"
-          initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={motion.transition("slow")}
-        >
-          <p className="mb-6 inline-flex items-center gap-2.5 border-l border-line-strong pl-3 eyebrow">
-            Trust, made verifiable
-          </p>
+        It used to be a direct child of a wrapper around the whole page, painted
+        `position: fixed; inset: 0`. That is a backdrop with no relationship to anything: it
+        covered the entire viewport at every scroll position, so the lattice ran behind the
+        pillars, the flow rows and the security section, and it crossed the hero copy rather
+        than sitting behind it.
 
-          <h1 className="max-w-[16ch] text-display font-semibold">TrustChain</h1>
+        Bounding it here — a positioned, clipped container that wraps the hero and nothing
+        else — is what lets it read as this section's backdrop and scroll away with it.
+      */}
+      <div className="relative overflow-hidden">
+        <ParticleNetwork />
 
-          <p className="mt-4 min-h-[1.6em] max-w-[52ch] text-[clamp(1rem,2vw,1.3rem)] text-fg-muted">
-            <Typewriter text="Identity. Authority. Ownership. On one ledger." />
-          </p>
+        <section className={`${SHELL} relative flex min-h-[78vh] items-center py-20`}>
+          <fm.div
+            className="w-full"
+            initial={motion.reduced ? { opacity: 0 } : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={motion.transition("slow")}
+          >
+            <p className="mb-6 inline-flex items-center gap-2.5 border-l border-line-strong pl-3 eyebrow">
+              Trust, made verifiable
+            </p>
 
-          <p className="mt-7 max-w-[58ch] text-base leading-relaxed text-fg-muted">
-            A centralized IAM dashboard asks you to trust its database. TrustChain replaces that
-            promise with a proof anyone can check.
-          </p>
+            <h1 className="max-w-[16ch] text-display font-semibold">TrustChain</h1>
 
-          <div className="mt-9 flex flex-wrap items-center gap-3">
-            <ConnectButton />
-            {/* asChild keeps this a real anchor: middle-clickable, copyable, announced as a link. */}
-            <Button asChild variant="outline">
-              <Link to="/verify">Verify a credential</Link>
-            </Button>
-          </div>
+            <p className="mt-4 min-h-[1.6em] max-w-[52ch] text-[clamp(1rem,2vw,1.3rem)] text-fg-muted">
+              <Typewriter text="Identity. Authority. Ownership. On one ledger." />
+            </p>
 
-          <div className="mt-10 border-t border-line pt-5">
-            <NetworkBadge variant="full" />
-          </div>
-        </fm.div>
-      </section>
+            <p className="mt-7 max-w-[58ch] text-base leading-relaxed text-fg-muted">
+              A centralized IAM dashboard asks you to trust its database. TrustChain replaces that
+              promise with a proof anyone can check.
+            </p>
+
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <ConnectButton />
+              {/* asChild keeps this a real anchor: middle-clickable, copyable, announced as a link. */}
+              <Button asChild variant="outline">
+                <Link to="/verify">Verify a credential</Link>
+              </Button>
+            </div>
+
+            <div className="mt-10 border-t border-line pt-5">
+              <NetworkBadge variant="full" />
+            </div>
+          </fm.div>
+        </section>
+      </div>
 
       <section
         className={`${SHELL} relative py-20`}

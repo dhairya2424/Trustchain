@@ -186,7 +186,38 @@ async function waitFor(read, predicate, { attempts = 25, delayMs = 600 } = {}) {
   return null;
 }
 
+/**
+ * Refuse early, and say why, when the backend is not on the local chain.
+ *
+ * This tool signs in with published Hardhat test keys and declares chain 31337. Against a
+ * backend bound to Amoy those accounts hold no roles, so issuing a credential returns
+ * `403 forbidden` — the RBAC working correctly, reading as a broken tool.
+ */
+async function requireLocalChain() {
+  const network = await call("GET", "/network");
+  const active = network.body?.active;
+
+  if (!active) {
+    console.error(`could not read the active network from ${API} — is the backend running?`);
+    process.exit(1);
+  }
+
+  if (active.chainId !== 31337) {
+    console.error(
+      `This tool targets the local Hardhat chain (31337) with published test keys.\n` +
+        `The backend is on ${active.label} (${active.chainId}), where those accounts hold no\n` +
+        `roles — issuing a credential would return 403.\n\n` +
+        `For that network, run instead:\n` +
+        `  node tools/e2e-gaps.mjs     issuance, revocation and public verification\n` +
+        `  node tools/e2e-qr-file.mjs  the verifier's QR and image paths\n`,
+    );
+    process.exit(1);
+  }
+}
+
 async function main() {
+  await requireLocalChain();
+
   console.log("Public verifier — live");
 
   // -------------------------------------------------------------- unregistered
