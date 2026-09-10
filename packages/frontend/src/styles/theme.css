@@ -101,6 +101,18 @@
   --radius-lg: 8px;
 
   /*
+   * Motion, for the handful of animations that belong in CSS rather than in framer.
+   *
+   * These mirror `DURATION.quick` and `EASE_OUT` in src/motion/motion.ts, which remains the
+   * source for everything JavaScript drives. Two values are duplicated rather than shared
+   * because the alternative — injecting them from TS at runtime — would make a stylesheet
+   * depend on a module having loaded, and the one animation using them exists precisely so
+   * that nothing has to load for a page to be visible. `motion.test.ts` pins the numbers.
+   */
+  --duration-quick: 240ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /*
    * One content width.
    *
    * Pages previously used 1200px, 1400px and 900px, so the left edge of the content moved
@@ -285,6 +297,44 @@
   a:where([class*="underline"]) {
     text-underline-offset: 0.2em;
     text-decoration-thickness: 1px;
+  }
+
+  /*
+   * The route entrance.
+   *
+   * A 12px rise and a fade over 240ms — the same gesture framer used to run, moved here for
+   * one reason: the resting style is the visible one. The keyframe departs from that state
+   * and returns to it, so an animation that is skipped, interrupted, or never started leaves
+   * the page on screen rather than at `opacity: 0`.
+   *
+   * That was not hypothetical. Driven from framer's `initial` under `AnimatePresence
+   * mode="wait"`, roughly one navigation in three left the incoming page invisible until a
+   * reload — see PageTransition.tsx.
+   *
+   * Deliberately no `animation-fill-mode`. `both` or `forwards` would hold a keyframe state
+   * outside the animation's run, which is the whole failure mode being removed here.
+   */
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .page-enter {
+    animation: page-enter var(--duration-quick) var(--ease-out);
+  }
+
+  /* Belt and braces: the component already drops the class under reduced motion, and this
+     covers anything that renders it without consulting the motion scheme. */
+  @media (prefers-reduced-motion: reduce) {
+    .page-enter {
+      animation: none;
+    }
   }
 }
 
