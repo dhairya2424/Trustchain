@@ -84,6 +84,26 @@ export async function startWebgl(canvas: HTMLCanvasElement): Promise<FieldHandle
 
   resize();
 
+  /*
+   * Measure again whenever the box actually changes, not only on window resize.
+   *
+   * The first `resize()` above can run before the stylesheet has been applied — this module
+   * arrives through a dynamic import, and in development the CSS is injected by script, so
+   * the two race. Unstyled, the canvas is an ordinary block whose `height: 100%` resolves
+   * against the page-tall wrapper rather than the viewport, and it measures the height of
+   * the entire document: 2588px against an 856px viewport, measured.
+   *
+   * The scene was then rendered into a buffer three times too tall and squashed into a short
+   * element, which is what made the lattice look stretched and broken. It corrected itself
+   * the moment anything resized the window, which is exactly the shape of a race.
+   *
+   * A ResizeObserver fires when the element's box settles, so the buffer matches whatever the
+   * element really is — on first paint, on window resize, and on any later layout change.
+   */
+  const observer =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => resize());
+  observer?.observe(canvas);
+
   let frame = 0;
   let last = 0;
   let running = true;
@@ -173,6 +193,7 @@ export async function startWebgl(canvas: HTMLCanvasElement): Promise<FieldHandle
       cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", onVisibility);
       globalThis.removeEventListener("resize", resize);
+      observer?.disconnect();
 
       // GPU memory is not garbage collected with the JS objects that reference it. Without
       // these the context leaks a buffer set per mount, and browsers cap live contexts —

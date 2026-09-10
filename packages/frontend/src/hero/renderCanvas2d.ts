@@ -41,6 +41,19 @@ export function startCanvas2d(canvas: HTMLCanvasElement): FieldHandle {
 
   resize();
 
+  /*
+   * Measure again whenever the box actually changes, not only on window resize.
+   *
+   * The first `resize()` can run before the stylesheet has been applied, and unstyled this
+   * canvas is an ordinary block whose `height: 100%` resolves against the page-tall wrapper
+   * instead of the viewport — so it measures the whole document and the field is drawn into a
+   * buffer several times too tall, then squashed into a short element. See the same note in
+   * renderWebgl.ts, where it was measured.
+   */
+  const observer =
+    typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => resize());
+  observer?.observe(canvas);
+
   const toScreenX = (x: number) => ((x + 1) / 2) * width;
   const toScreenY = (y: number) => ((y + 1) / 2) * height;
 
@@ -107,6 +120,7 @@ export function startCanvas2d(canvas: HTMLCanvasElement): FieldHandle {
       cancelAnimationFrame(frame);
       document.removeEventListener("visibilitychange", onVisibility);
       globalThis.removeEventListener("resize", resize);
+      observer?.disconnect();
     },
   };
 }
