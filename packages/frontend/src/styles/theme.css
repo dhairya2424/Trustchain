@@ -448,33 +448,45 @@
    * not grow the document, and pointer-events off so it never eats a click.
    */
   /*
-   * The hero field: a backdrop, with a place to be.
+   * The field: fixed behind the whole page, and kept off the words.
    *
-   * This was `position: fixed; inset: 0`, which is not a backdrop so much as an overlay on
-   * the entire application. It covered the viewport at every scroll position, so the lattice
-   * sat behind the pillars, the flow rows and the security section as well as the hero, and
-   * it crossed the headline and body copy instead of staying behind them. Lines ran straight
-   * through the paragraph.
+   * `fixed` is deliberate and was asked for. The lattice stays behind the reader the entire
+   * way down rather than scrolling away with the hero — it is the page's backdrop, not one
+   * section's, and the sense of moving across a static structure is the effect.
    *
-   * Two things fix it. `absolute` inside the hero's own clipped container bounds it, so it
-   * ends where the hero ends and scrolls away rather than following the reader down. And the
-   * mask gives it an orientation: weighted to the right, away from the copy column, fading
-   * out well before every edge so it never meets a hard boundary.
+   * What it must not do is compete with the text, which is what it used to do: unmasked and
+   * edge to edge, lines ran straight through the headline and the paragraph.
+   *
+   * So the mask does the work instead of containment. It is weighted to the right, away from
+   * the copy column, and fades out well before every edge so the field never meets a hard
+   * boundary. Because the element is fixed, the mask is anchored to the viewport too — the
+   * clear region travels with the reader, so the left-hand column stays legible at every
+   * scroll position rather than only in the hero.
    *
    * The mask is not decoration. This system permits exactly one gradient-shaped device — the
    * legibility scrim that fades a pattern out beneath text — and that is precisely the job
-   * here: the field is at full strength where there is nothing to read, and gone where there
-   * is. It is also why the still tier below no longer carries its own mask; it inherits this
-   * one, and the two were describing the same intent differently.
+   * here: full strength where there is nothing to read, gone where there is. It is also why
+   * the still tier below no longer carries its own mask; it inherits this one, and the two
+   * were describing the same intent differently.
    */
   .hero-field {
-    position: absolute;
+    position: fixed;
     inset: 0;
     width: 100%;
     height: 100%;
     z-index: 0;
     pointer-events: none;
     mask-image: radial-gradient(ellipse 82% 92% at 76% 45%, #000 22%, transparent 78%);
+    /*
+     * Held back so it reads as texture rather than as lines drawn over words.
+     *
+     * The mask can steer the field away from the hero's copy, which occupies the left half
+     * and leaves the right genuinely empty. It cannot do the same for the sections below,
+     * where the content spans nearly the full container and there is no empty side to move
+     * toward. A fixed backdrop is going to sit behind that text by definition, so the thing
+     * that keeps it comfortable is weight, not position.
+     */
+    opacity: 0.55;
   }
 
   /*
