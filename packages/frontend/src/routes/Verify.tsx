@@ -42,6 +42,39 @@ type Phase = "idle" | "verifying" | "done" | "error";
 const SHELL = "shell shell-reading";
 
 /**
+ * The five findings, and the sixth thing that is not a finding.
+ *
+ * Taken from `decideVerdict` in verdict.ts rather than written alongside it, so the legend
+ * cannot drift from what the page actually returns. The last row is the one worth reading:
+ * an unreachable registry is a separate outcome, never reported as a verdict about the
+ * credential, which is the distinction the whole page exists to preserve.
+ */
+const VERDICT_LEGEND = [
+  { title: "AUTHENTIC", meaning: "The chain holds a live, unrevoked record.", dot: "bg-verified" },
+  {
+    title: "REVOKED",
+    meaning: "Withdrawn by its issuer, with a reason on-chain.",
+    dot: "bg-revoked",
+  },
+  {
+    title: "EXPIRED",
+    meaning: "Genuine, and past the date it was issued for.",
+    dot: "bg-fallback",
+  },
+  {
+    title: "TAMPERED",
+    meaning: "The signature does not verify over this document.",
+    dot: "bg-revoked",
+  },
+  { title: "UNREGISTERED", meaning: "No record of it was ever anchored.", dot: "bg-revoked" },
+  {
+    title: "UNAVAILABLE",
+    meaning: "The registry could not be reached. Not a statement about the credential.",
+    dot: "bg-line-strong",
+  },
+] as const;
+
+/**
  * Pulls a DID out of a scanned value, or returns null.
  *
  * Accepts the verification URL the identity card encodes, and a bare DID hash for anyone
@@ -412,6 +445,41 @@ export function Verify() {
           <Status tone="fallback">Could not check</Status>
           <p className="mt-3 max-w-[62ch] text-sm leading-relaxed text-fg-muted">{error}</p>
         </div>
+      )}
+
+      {/*
+        What the page will tell you, before it tells you anything.
+
+        The resting state was a form and then several hundred pixels of nothing, which asks a
+        first-time visitor to paste a credential without knowing what kind of answer comes
+        back. Naming the five verdicts is the useful thing to put there: it sets the
+        expectation that this returns a specific finding rather than a yes/no, and it makes
+        the point the product rests on — "we could not reach the chain" is never reported as
+        "not genuine".
+
+        These are the five in `verdict.ts`, with their real tones, so the row doubles as a
+        legend for the only three colours in the interface.
+      */}
+      {phase === "idle" && !identity && !verdict && (
+        <section className="mt-8 panel px-5 py-5" data-testid="verify-idle">
+          <p className="eyebrow">What comes back</p>
+          <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {VERDICT_LEGEND.map((entry) => (
+              <li key={entry.title} className="flex items-start gap-2.5">
+                <span
+                  className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", entry.dot)}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0">
+                  <span className="font-mono text-2xs tracking-label text-fg">{entry.title}</span>
+                  <span className="mt-0.5 block text-sm leading-relaxed text-fg-muted">
+                    {entry.meaning}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {phase === "verifying" && (

@@ -22,18 +22,34 @@ import { cn } from "@/lib/utils";
 const buttonVariants = cva(
   cn(
     "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium",
-    "rounded-[--radius] transition-colors",
+    "rounded-[--radius]",
     "disabled:pointer-events-none disabled:opacity-45",
     // 44px is the smallest reliably tappable target; below it, thumbs miss.
     "min-h-11",
+    /*
+     * The press.
+     *
+     * Colour alone told you a button was pressed, and only on `primary` — the other three
+     * variants acknowledged hover and then went still under the pointer, which on a touch
+     * screen (no hover at all) meant a tap produced no feedback whatsoever until the network
+     * answered. A 1% inset is small enough to read as the surface taking the load rather
+     * than as the control moving, and it costs one composited transform.
+     *
+     * `transition-[colors,transform]` rather than `transition-all`: transitioning everything
+     * animates properties nobody chose, and on the outline variant it made the border
+     * crossfade a frame behind the fill.
+     */
+    "transition-[color,background-color,border-color,transform] duration-150 ease-out",
+    "active:scale-[0.99] motion-reduce:active:scale-100 motion-reduce:transition-none",
   ),
   {
     variants: {
       variant: {
         primary: "bg-fg text-canvas hover:bg-fg/88 active:bg-fg/80",
-        outline: "border border-line-strong text-fg hover:bg-hover hover:border-fg-faint",
-        ghost: "text-fg-muted hover:text-fg hover:bg-hover",
-        danger: "border border-revoked/45 text-revoked hover:bg-revoked/10",
+        outline:
+          "border border-line-strong text-fg hover:bg-hover hover:border-fg-faint active:bg-raised",
+        ghost: "text-fg-muted hover:text-fg hover:bg-hover active:bg-raised",
+        danger: "border border-revoked/45 text-revoked hover:bg-revoked/10 active:bg-revoked/16",
       },
       size: {
         sm: "h-9 min-h-9 px-3 text-sm",

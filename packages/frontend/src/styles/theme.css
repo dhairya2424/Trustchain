@@ -195,6 +195,97 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+   * The parts nobody draws.
+   *
+   * Selection, the caret, scrollbars and autofill ship with browser defaults that belong to
+   * no design system, and on a monochrome graphite app they are the loudest thing on screen:
+   * Chrome's selection is a saturated blue and its autofill is a flat pale yellow. On an
+   * interface whose one rule is that colour means something, a hue arriving from the user
+   * agent is a hue that means nothing — and it turns up on exactly the values people select
+   * most, the hashes and addresses they are copying out to check.
+   *
+   * So they are themed from the same palette as everything else, in neutral.
+   */
+
+  ::selection {
+    /* Near-white at low alpha rather than a fill: keeps the selected glyphs legible instead
+       of reversing them out, which matters most on the long mono hashes. */
+    background: rgb(236 236 238 / 0.22);
+    color: var(--color-fg);
+  }
+
+  /* The insertion point, in the foreground colour rather than the platform's. */
+  :where(input, textarea, [contenteditable]) {
+    caret-color: var(--color-fg);
+  }
+
+  /*
+   * Scrollbars.
+   *
+   * The audit log, the dashboard activity feed and the credential disclosure all scroll
+   * inside a panel, and a default light scrollbar cuts a bright seam down the edge of a dark
+   * one. `scrollbar-width: thin` is the standard property; the WebKit rules below say the
+   * same thing to browsers that have not implemented it.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    /* Inset by a transparent border so the thumb reads as a bar with air around it rather
+       than a block filling the gutter. */
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-fg-faint);
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  /*
+   * Autofill.
+   *
+   * Chrome paints a pale yellow over an autofilled field and refuses to let `background`
+   * override it. A long inset shadow in the field's own colour is the one thing that does,
+   * and `-webkit-text-fill-color` is what keeps the text readable afterwards.
+   */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px var(--color-canvas) inset;
+    -webkit-text-fill-color: var(--color-fg);
+    caret-color: var(--color-fg);
+  }
+
+  /*
+   * Underlines that clear their descenders.
+   *
+   * The browser default sits on the baseline and strikes through the tails of g, y and p —
+   * visible on every explorer link in the activity feed, which are long mono hashes.
+   */
+  a:where([class*="underline"]) {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 1px;
+  }
 }
 
 @layer components {

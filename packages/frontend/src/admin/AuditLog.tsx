@@ -212,7 +212,16 @@ export function AuditLog() {
       ) : (
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0 overflow-hidden panel">
-            <div className="grid grid-cols-[7rem_1fr_9rem] gap-4 border-b border-line px-4 py-2.5 eyebrow">
+            {/*
+              The action column gets the room on a phone.
+
+              At a fixed `7rem 1fr 9rem` the middle column collapsed to about 100px on a
+              390px screen, and every row ellipsized to "Ass…", "Rol…", "Cre…" — the audit
+              log rendering everything except what happened. The entry id and timestamp are
+              narrower than their desktop columns because neither needs that width; the
+              action is the row.
+            */}
+            <div className="grid grid-cols-[3.25rem_minmax(0,1fr)_5.25rem] gap-3 border-b border-line px-4 py-2.5 eyebrow sm:grid-cols-[7rem_minmax(0,1fr)_9rem] sm:gap-4">
               <span>Entry</span>
               <span>Action</span>
               <span className="text-right">When</span>
@@ -231,7 +240,7 @@ export function AuditLog() {
                       onClick={() => setSelected(entry)}
                       onMouseEnter={() => setSelected(entry)}
                       className={cn(
-                        "absolute left-0 top-0 grid w-full grid-cols-[7rem_1fr_9rem] items-center gap-4 border-b border-line px-4 text-left transition-colors",
+                        "absolute left-0 top-0 grid w-full grid-cols-[3.25rem_minmax(0,1fr)_5.25rem] items-center gap-3 border-b border-line px-4 text-left transition-colors sm:grid-cols-[7rem_minmax(0,1fr)_9rem] sm:gap-4",
                         selected?.entryId === entry.entryId ? "bg-hover" : "hover:bg-hover/60",
                       )}
                       style={{ height: row.size, transform: `translateY(${row.start}px)` }}
@@ -242,7 +251,12 @@ export function AuditLog() {
                       </span>
                       <span className="min-w-0 truncate text-sm">
                         {actionLabel(entry.action)}
-                        <span className="ml-2 font-mono text-xs text-fg-muted">
+                        {/*
+                          The actor stands down on a phone rather than competing for the
+                          same 200px as the action name. It is not lost: selecting the row
+                          opens a panel that names the actor, the executor and the block.
+                        */}
+                        <span className="ml-2 hidden font-mono text-xs text-fg-muted sm:inline">
                           {entry.actor ? truncateAddress(entry.actor) : "unattributed"}
                         </span>
                       </span>

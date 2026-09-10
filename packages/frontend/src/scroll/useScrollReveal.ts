@@ -66,6 +66,8 @@ export function useScrollReveal<T extends HTMLElement>(options: ScrollRevealOpti
 
       if (targets.length === 0) return;
 
+      let revealed = false;
+
       const tween = gsap.fromTo(
         targets,
         { opacity: 0, y },
@@ -75,6 +77,9 @@ export function useScrollReveal<T extends HTMLElement>(options: ScrollRevealOpti
           duration: 0.75,
           ease: "power3.out",
           stagger,
+          onStart: () => {
+            revealed = true;
+          },
           scrollTrigger: {
             trigger: element,
             // Fires when the element is 85% of the way down the viewport: far enough in to
@@ -86,7 +91,43 @@ export function useScrollReveal<T extends HTMLElement>(options: ScrollRevealOpti
         },
       );
 
+      /*
+       * Re-measure once the page has settled.
+       *
+       * ScrollTrigger computes each start position when the tween is created. Web fonts,
+       * images and late-arriving data all move things afterwards, and a start measured
+       * against the wrong layout can sit below a page that never scrolls that far.
+       */
+      const refresh = window.setTimeout(() => ScrollTrigger.refresh(), 400);
+
+      /*
+       * The guarantee.
+       *
+       * This hook's own premise is that content must never be left invisible by an
+       * animation that did not run, and it already covers two ways that happens: reduced
+       * motion, and a failed GSAP import. It did not cover the third one named in its own
+       * comment — the trigger simply never firing — and that case is real rather than
+       * theoretical: a visitor who lands and does not scroll leaves three rows of the
+       * landing page at `opacity: 0` indefinitely, because `fromTo` applies the hidden
+       * state at creation while the reveal waits on a scroll that may not come.
+       *
+       * It also bites where there is no scrolling at all: print, PDF export, page capture,
+       * an in-page anchor jump, and find-in-page all reach content this way.
+       *
+       * So a reveal that has not begun shortly after load is abandoned and the content is
+       * simply shown. Anyone scrolling normally reaches the section long after this and
+       * sees the animation as authored; nobody ever sees an empty block.
+       */
+      const guarantee = window.setTimeout(() => {
+        if (revealed) return;
+        tween.scrollTrigger?.kill();
+        tween.kill();
+        gsap.set(targets, { clearProps: "opacity,transform" });
+      }, 2500);
+
       cleanup = () => {
+        window.clearTimeout(refresh);
+        window.clearTimeout(guarantee);
         tween.scrollTrigger?.kill();
         tween.kill();
         // Whatever happened, leave the DOM in the visible state rather than mid-tween.
