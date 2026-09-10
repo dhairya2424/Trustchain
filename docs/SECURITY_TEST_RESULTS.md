@@ -145,26 +145,48 @@ established directly at the layer that matters:
 
 ---
 
-## 6. Passive scan — the ZAP baseline, and why it was run manually
+## 6. OWASP ZAP baseline — run, and one Medium fixed
 
 An OWASP ZAP **baseline** scan is a passive pass: it spiders a target and inspects responses
 for missing or weak security headers, unsafe cookie flags, permissive CORS, and technology
 disclosure. It does not attack.
 
-**The full ZAP container was not run in this session, and this is a deliberate, stated
-choice rather than a skipped step.** The machine had ~2.7 GB free with Docker's WSL VM already
-resident, and the low-memory watchdog had already killed the dev servers twice during the
-session. Pulling a ~1.6 GB scanner image and starting a JVM against that headroom risked
-killing the backend mid-scan and producing corrupt results. The honest alternative was to run
-the exact passive inspection ZAP baseline performs, directly, and label it as such
-(`tools/security-passive-scan.mjs`). When memory allows (close other apps, or stop the compose
-stack when the chain is not needed), the real scan is one command:
+**The real ZAP baseline was run against both origins** once the machine had headroom
+(`ghcr.io/zaproxy/zaproxy:stable`, container capped at `-m 2g` so it could not disturb the dev
+servers). The reports are committed under `docs/security/`:
 
-```bash
-docker run --rm -t --add-host=host.docker.internal:host-gateway \
-  ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
-  -t http://host.docker.internal:5173 -I
-```
+| Target           | High  | Medium | Low | Info | Report                                   |
+| ---------------- | ----- | ------ | --- | ---- | ---------------------------------------- |
+| API `:4000`      | **0** | **0**  | 0   | 1    | `docs/security/zap-api-baseline.md`      |
+| Frontend `:5173` | **0** | **0**  | 0   | 1    | `docs/security/zap-frontend-baseline.md` |
+
+The one Informational on each ("Storable / Non-Storable Content") is a caching note, not a
+vulnerability. **Zero High, zero Medium** — the P4.1 bar.
+
+### The Medium that was found and fixed
+
+The first API scan flagged **one Medium** — _CSP: Failure to Define Directive with No
+Fallback_ (rule 10055): a 404 response carried only `default-src 'none'`, missing
+`frame-ancestors` and `form-action`, which do not fall back to `default-src`. The cause was
+Express's built-in `finalhandler`, which serves the HTML 404 for an unmatched route and stamps
+its own reduced CSP over the one helmet had set. Every _routed_ response was fully locked down;
+only the fall-through 404 was affected. The fix is an explicit JSON 404 handler
+(`server.ts`), so `finalhandler` never runs and helmet's full policy survives — verified by
+the re-scan above (Medium → 0) and pinned by a regression test in `securityHeaders.test.ts`.
+
+### Two caveats worth stating plainly
+
+- The **frontend** scan ran against the Vite **dev server**, which rejects the container's
+  `host.docker.internal` Host header with a 403 — so ZAP saw the dev server's error page, not
+  much of the SPA. The SPA's own CSP and headers are applied by the production Nginx ingress
+  (`docs/HTTPS.md`) and are covered by the passive inspection below; a full frontend ZAP pass
+  belongs against the Nginx-served production build.
+- `gitleaks` in the history sweep (§ P4.2) is skipped inside a git **worktree** for a related
+  reason; the built-in sweep is authoritative there.
+
+### Passive inspection, cross-checked independently (`tools/security-passive-scan.mjs`)
+
+The same checks ZAP's baseline performs, run directly and graded, as a second opinion:
 
 ### What the passive inspection found (API, `:4000`)
 
@@ -278,12 +300,35 @@ dependency audit → frontend-bundle leak grep → tool tests. **Exit 0.**
 - **The dependency audit reports 42 advisories (34 low, 8 moderate, 0 high/critical)** in
   transitive dev dependencies; `security:deps` passes because its threshold blocks only
   high/critical. Worth clearing when convenient, not a release blocker.
-- **Run the full ZAP baseline on a machine with headroom** to convert the §6 passive results
-  from "manual equivalent" to "tool-confirmed". The command is above; expected new findings:
-  none, since the header and cookie posture it inspects is already locked down.
+- **The one Medium ZAP found (reduced CSP on the 404 path) is fixed** and re-scan-confirmed
+  to 0/0; see §6. A regression test in `securityHeaders.test.ts` keeps it from returning.
+- **A full frontend ZAP pass belongs against the Nginx-served production build**, not the Vite
+  dev server, which host-rejects the scanner. The dev-server scan is clean but shallow.
 - **Exercise the SQL-injection case live** by running the pentest harness against a
   Postgres-wired backend (`DATABASE_URL` set, profiles mounted); the harness auto-detects the
   route and runs the payload when the feature is present.
 - Two items remain open from the traceability audit and are unrelated to this pass:
   admin is still a deployer EOA (Safe multisig handover pending), and HTTPS is prepared but
   unproven without a domain and certificate.
+
+---
+
+## Phase 4 exit check — every item, its proof artifact
+
+`npm run security:all` exits **0**. Both ZAP baselines are clean of High/Medium. Each
+checklist item maps to a committed artifact that proves it:
+
+| Checklist item                                      | Proof artifact                                                                | Result                                                   |
+| --------------------------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------- |
+| ZAP baseline, API + frontend, fix every High/Medium | `docs/security/zap-api-baseline.md`, `docs/security/zap-frontend-baseline.md` | 0 High, 0 Medium (one Medium found → fixed → re-scanned) |
+| JWT forgery (alg=none, kid, confusion, tamper)      | `tools/security-pentest.mjs` §1                                               | 5/5 defended                                             |
+| Cookie theft / XSS renders inert                    | `tools/security-xss-dom.mjs`                                                  | 7/7 inert; `document.cookie` empty (HttpOnly)            |
+| IDOR — A cannot reach B's data                      | `tools/security-pentest.mjs` §3                                               | 4/4 refused                                              |
+| SIWE replay rejected                                | `tools/security-pentest.mjs` §2                                               | replay → 401 nonce consumed                              |
+| Disguised `.exe` upload rejected                    | `tools/security-pentest.mjs` §4                                               | 415 magic-byte mismatch                                  |
+| SQLi in every param no effect                       | `tools/security-pentest.mjs` §5 + `db/sql.test.ts`                            | 400 at the schema; parameterised by construction         |
+| Full-history secret sweep, rotate if found          | `tools/scan-history.mjs`                                                      | CLEAN; 3 shape-based false positives triaged             |
+| `.env` never committed                              | `tools/scan-history.mjs` §3–4                                                 | clean; `.gitignore` covers it                            |
+| Backend keys never ship to frontend                 | `tools/check-frontend-bundle.mjs`                                             | clean, 20 built files                                    |
+| Response validation throws on extra fields          | `http/responseValidation.ts` + `responseValidation.test.ts`                   | 7 tests; active across 623 backend tests + live Amoy     |
+| One command runs every check                        | `npm run security:all`                                                        | **exit 0**                                               |

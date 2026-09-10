@@ -42,6 +42,22 @@ describe("securityHeaders — CSP", () => {
     expect(res.headers["x-frame-options"]).toBe("DENY");
   });
 
+  it("keeps the full CSP on a 404, rather than letting finalhandler reduce it", async () => {
+    // An unknown path used to fall through to Express's finalhandler, which stamps its own
+    // `default-src 'none'` over helmet's policy — dropping frame-ancestors and form-action,
+    // which do not fall back to default-src. An OWASP ZAP baseline flagged that as a Medium.
+    // The explicit JSON 404 handler keeps the full policy.
+    const res = await request(createServer()).get("/no-such-route");
+    const csp = parseCsp(res.headers["content-security-policy"] as string);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "not_found", requestId: expect.any(String) });
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    // The two directives that finalhandler dropped, now present on the 404 too.
+    expect(csp["frame-ancestors"]).toEqual(["'none'"]);
+    expect(csp["form-action"]).toEqual(["'none'"]);
+  });
+
   it("never allows unsafe-inline or unsafe-eval anywhere in the API policy", () => {
     const flat = Object.values(API_CSP_DIRECTIVES).flat().join(" ");
 

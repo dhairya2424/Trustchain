@@ -1,4 +1,4 @@
-import express, { type Express, type RequestHandler } from "express";
+import express, { type Express, type Request, type RequestHandler, type Response } from "express";
 import cookieParser from "cookie-parser";
 import { updateProfileRequest } from "@trustchain/shared";
 
@@ -154,6 +154,20 @@ export function createServer(options: ServerOptions = {}): Express {
   if (options.roles) {
     app.use("/roles", createRoleRouter(options.roles));
   }
+
+  // An explicit JSON 404 for anything unmatched.
+  //
+  // Without this, an unknown path falls through to Express's built-in `finalhandler`, which
+  // sends an HTML error page and — as a defence for that page — stamps its own
+  // `Content-Security-Policy: default-src 'none'` over the one helmet set. That reduced
+  // header drops `frame-ancestors` and `form-action`, which do not fall back to
+  // `default-src`, so a 404 page became framable and form-targetable while every real
+  // response was locked down. An OWASP ZAP baseline flagged exactly that as a Medium
+  // ("CSP: Failure to Define Directive with No Fallback"). Answering the 404 ourselves keeps
+  // helmet's full policy and returns the JSON shape the rest of the API uses.
+  app.use((req: Request, res: Response) => {
+    res.status(404).json({ error: "not_found", requestId: req.requestId });
+  });
 
   // Last, after every route. Handlers are wrapped in `asyncHandler`, which forwards a
   // rejected promise here — without it Express 4 would leave the request hanging with no
