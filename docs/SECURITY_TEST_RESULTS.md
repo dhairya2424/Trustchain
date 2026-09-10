@@ -201,10 +201,83 @@ application.
 
 ---
 
+## P4.2 — secrets sweep & response trimming
+
+The hygiene pass. One command runs all of it: `npm run security:all`.
+
+### Full git-history secret sweep — `node tools/scan-history.mjs`
+
+Every line ever _added_ across all branches is run through the same secret patterns the
+working-tree scanner uses — the check the working-tree scan cannot make, because a credential
+deleted in a later commit still sits in history for anyone who clones. Result: **CLEAN, no
+untriaged secret in any commit.**
+
+Three shape-based false positives were flagged, investigated, and triaged (the git-history
+equivalent of a `.gitleaksignore`, keyed by commit + file + pattern, so a genuinely new secret
+still fails):
+
+| Commit     | File                        | Flagged as            | Verdict                                                                                                  |
+| ---------- | --------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------- |
+| `bb3566f`  | `tools/e2e-verify-page.mjs` | evm-private-key       | a **`didHash`** — keccak256 of a public DID string, not a key                                            |
+| `226896e0` | `Dashboard.test.tsx`        | evm-private-key       | an inert fixture **transaction hash** (`0x3333…3333`)                                                    |
+| `eac8cdd9` | `config/env.test.ts`        | credential-assignment | the fixture string `"super-secret-value-that-must-not-leak"`, asserting the parser never echoes a secret |
+
+`gitleaks` is run as an independent second opinion when present. It is **deliberately skipped
+in this worktree**: a linked worktree's `.git` is a file pointing at the parent repo, so a
+Docker-mounted gitleaks sees 0 commits and would falsely report "clean". The built-in sweep,
+which uses the real git, is authoritative here; run gitleaks on the main checkout for the
+second opinion. Nothing found means nothing to rotate.
+
+### `.env` never committed, and cannot be
+
+- No real dotenv file appears anywhere in history — only `.env.example`-style templates.
+- `.gitignore` ignores `.env`, `packages/backend/.env`, `packages/contracts/.env`, so a stray
+  secret file cannot be staged by accident.
+
+### Backend-only keys never ship to the frontend — `security:bundle`
+
+The frontend is built and the output (including sourcemaps) grepped for every server-only
+variable **name** and current **value**, for `process.env` access, and for generic credential
+patterns. Result: **clean, 20 built files scanned.** The bundle carries no `JWT_PRIVATE_KEY`,
+`DATABASE_URL`, `PINATA_JWT`, `DEPLOYER_PRIVATE_KEY`, `AMOY_RPC_URL`, or any other backend
+secret.
+
+### Response trimming — the dev-mode contract guard
+
+`http/responseValidation.ts` wraps `res.json` in development and test (a pass-through in
+production, so it can never fail a live response) and enforces two things:
+
+- **A strict DTO contract** on the read endpoints assembled from internal records — session,
+  nonce, owned assets, audit page, identity. The schemas are `.strict()`, so an **extra field
+  the DTO does not name throws**. This is the "trim API responses" enforcement: a handler that
+  spreads one field too many out of a token payload or a chain read is caught the first time it
+  runs. The contracts are allowlists of field _names_ — loose on value types on purpose, so a
+  mistyped value can never fail a correct response.
+- **A forbidden-key denylist** beneath every response, contracted or not: no body at any depth
+  may carry a field whose name is server-only material (`privateKey`, `secret`, `mnemonic`,
+  `password`, an encryption `iv`/`salt`). The SIWE `nonce` is explicitly allowed, being the
+  public payload it is.
+
+Proven both ways: the guard is active across all **622 backend unit tests** and the two live
+Amoy suites (**30/30** and **28/28**), where no endpoint ever violates its contract; and
+`responseValidation.test.ts` (7 cases, run by `security:responses`) proves it _throws_ on an
+extra field and on a server-only key, and does not misfire on `active` (whose name contains
+the short token `iv`).
+
+### `npm run security:all`
+
+Runs, in one command: working-tree secrets → full history → SQL → XSS → response contracts →
+dependency audit → frontend-bundle leak grep → tool tests. **Exit 0.**
+
+---
+
 ## Findings and follow-ups
 
 - **No High or Medium findings.** Every attack driven against the live system was defended, and
   the one un-exercisable case is covered by unit tests.
+- **The dependency audit reports 42 advisories (34 low, 8 moderate, 0 high/critical)** in
+  transitive dev dependencies; `security:deps` passes because its threshold blocks only
+  high/critical. Worth clearing when convenient, not a release blocker.
 - **Run the full ZAP baseline on a machine with headroom** to convert the §6 passive results
   from "manual equivalent" to "tool-confirmed". The command is above; expected new findings:
   none, since the header and cookie posture it inspects is already locked down.

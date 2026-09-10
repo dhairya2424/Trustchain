@@ -13,6 +13,7 @@ import { createProfileRouter, type ProfileDependencies } from "./profiles/routes
 import { createRoleRouter, type RoleDependencies } from "./roles/routes";
 import { ConsoleLogger, type Logger } from "./http/logger";
 import { errorHandler, requestId, sanitizeInput, validate } from "./http/middleware";
+import { validateResponses } from "./http/responseValidation";
 import { corsMiddleware } from "./http/cors";
 import { requireHttps, sanitizeResponses, securityHeaders } from "./http/securityHeaders";
 
@@ -21,6 +22,11 @@ export interface SecurityOptions {
   hsts?: boolean;
   /** Refuse plain-HTTP requests. On in production, where Nginx terminates TLS. */
   requireHttps?: boolean;
+  /**
+   * Validate outgoing responses against their DTO contract and throw on an extra field.
+   * On in development and test, off in production. See http/responseValidation.ts.
+   */
+  validateResponses?: boolean;
 }
 
 export interface ServerOptions {
@@ -90,6 +96,17 @@ export function createServer(options: ServerOptions = {}): Express {
   if (options.httpLogger) app.use(options.httpLogger);
 
   app.use(sanitizeResponses({ logger }));
+
+  // After the sanitiser so it inspects the body the handler produced, before that body is
+  // trimmed or serialised. Off in production — a contract quirk must never be able to fail a
+  // live response — and on everywhere else, where a leaked or extra field should be loud.
+  app.use(
+    validateResponses({
+      enabled: security.validateResponses ?? process.env.NODE_ENV !== "production",
+      logger,
+    }),
+  );
+
   app.use(express.json({ limit: "64kb" }));
   app.use(cookieParser());
 
